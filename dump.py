@@ -5,18 +5,28 @@ from lib.stock_info import StockInfo
 from lib.db import Db
 import pandas as pd
 import datetime
+import time
 
-#Dump daily data to database, table is by date...
-def dump_daily_data(table_name):
-    db_ip = "10.64.165.81"
-    db = Db()
-    db_engine = db.connect("mysql+pymysql://root:mariadb@%s:3306/jia-stk"%db_ip)
+#Dump stock list from tushare to database
+def dump_stock_list(db_engine,table_name):
     stock_info = StockInfo()
-    for i in range(5):
+    stock_list = stock_info.get_stock_list()
+    stock_list.to_sql(table_name, db_engine, index=False, if_exists='append', chunksize=5000)
+	
+
+#Dump daily data from sina to database, table is by date...
+def dump_daily_data(db_engine, table_name):
+    stock_info = StockInfo()
+    for i in range(500):  #500*10 = total 5000 stocks, if increased, need to change 500 to a bigger value
         info = stock_info.get_daily_info_by_page(i)
         data = pd.read_json(info)
-        data.to_sql(table_name,db_engine, index=False, if_exists='append', chunksize=5000)
+        data.to_sql(table_name, db_engine, index=False, if_exists='append', chunksize=5000)
+        time.sleep(1)
 
 if __name__ == '__main__':
+    db = Db("10.64.165.81")
+    db_engine = db.create_engine()
     today = datetime.datetime.now().strftime("%Y%m%d")
-    dump_daily_data(today)
+    #dump_daily_data(db_engine,today)
+    #dump_stock_list(db_engine, 'stock_list')
+    dump_daily_data(db_engine, 'stock_daily_%s'%(today))

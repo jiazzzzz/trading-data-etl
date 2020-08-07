@@ -15,7 +15,18 @@ Sina: To get the daily info
 #### Programs
 
 ```
-dump.py - To dump daily data
+dump.py - To dump latest stock info and daily trading data
+sg.py - To get today new stock (Will not be saved to database)
+mon.py - To monitor stock live status
+status.py - To get market status after information is dumped to database
+```
+
+#### DB
+
+```
+stock_basic - Basic info retrieved from tushare, updated daily
+stock_daily_xxxx - Daily trading info for all stocks, everyday info is saved to one table, and will be kept 7 days
+
 ```
 
 
