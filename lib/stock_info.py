@@ -1,3 +1,4 @@
+#This file is to get information from outside, not db
 import requests
 from logger import Logger
 import re

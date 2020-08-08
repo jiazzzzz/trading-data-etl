@@ -3,6 +3,7 @@ import sys
 sys.path.append('./lib')
 from lib.stock_info import StockInfo
 from lib.db import Db
+from lib.common import Common
 import pandas as pd
 import datetime
 import time
@@ -24,9 +25,13 @@ def dump_daily_data(db_engine, table_name):
         time.sleep(1)
 
 if __name__ == '__main__':
-    db = Db("10.64.165.81")
+    com = Common()
+    db_ip = com.read_conf('settings.conf', 'db', 'ip')
+    db_user = com.read_conf('settings.conf', 'db', 'user')
+    db_passwd = com.read_conf('settings.conf', 'db', 'passwd')
+    db = Db(db_ip, db_user, db_passwd)
     db_engine = db.create_engine()
     today = datetime.datetime.now().strftime("%Y%m%d")
-    #dump_daily_data(db_engine,today)
     #dump_stock_list(db_engine, 'stock_list')
-    dump_daily_data(db_engine, 'stock_daily_%s'%(today))
+    #dump_daily_data(db_engine, 'stock_daily_%s'%(today))
+    dump_daily_data(db_engine, 'stock_daily_20200807')

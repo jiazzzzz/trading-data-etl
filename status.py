@@ -3,37 +3,31 @@ import sys
 sys.path.append('./lib')
 from lib.stock_info import StockInfo
 from lib.db import Db
+from lib.common import Common
 import pandas as pd
 import datetime
 import time
 
 #Dump stock list from tushare to database
-def get_market_status(db_engine,table_name):
-    conn = db_engine.connect()
+def get_market_status(db,table_name):
+    #conn = db_engine.connect()
     top_high_sql = "select name,changepercent from %s where changepercent>9.8"%(table_name)
     top_low_sql = "select name,changepercent from %s where changepercent<-6.9"%(table_name)
-    ret = conn.execute(top_high_sql).fetchall()
+    ret = db.exec(top_high_sql)
     print("==================================")
     print("There are total %s stocks where change percent>9.8"%(len(ret)))
     print(ret)
     print("==================================")
-    ret = conn.execute(top_low_sql).fetchall()
+    ret = db.exec(top_low_sql)
     print("There are total %s stocks where change percent<-6.9"%(len(ret)))
-    print(ret)
-    #print(ret)
-    
-
-#Dump daily data from sina to database, table is by date...
-def dump_daily_data(db_engine, table_name):
-    stock_info = StockInfo()
-    for i in range(500):  #500*10 = total 5000 stocks, if increased, need to change 500 to a bigger value
-        info = stock_info.get_daily_info_by_page(i)
-        data = pd.read_json(info)
-        data.to_sql(table_name, db_engine, index=False, if_exists='append', chunksize=5000)
-        time.sleep(1)
+    print(ret)    
 
 if __name__ == '__main__':
-    db = Db("10.64.165.81")
-    db_engine = db.create_engine()
-    today = datetime.datetime.now().strftime("%Y%m%d")
-    market_status = get_market_status(db_engine, 'stock_daily_%s'%(today))
+    com = Common()
+    db_ip = com.read_conf('settings.conf', 'db', 'ip')
+    db_user = com.read_conf('settings.conf', 'db', 'user')
+    db_passwd = com.read_conf('settings.conf', 'db', 'passwd')
+    db = Db(db_ip, db_user, db_passwd)
+    #db_engine = db.create_engine()
+    #today = datetime.datetime.now().strftime("%Y%m%d")
+    get_market_status(db, 'stock_daily_20200807')
