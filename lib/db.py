@@ -20,20 +20,31 @@ class Db():
         conn = db_engine.connect()
         return conn
 
-    def exec(self, sql_str):
+    def exec_and_fetch(self, sql_str):
         conn = self.connect()
         ret = conn.execute(sql_str).fetchall()
         return ret
+    
+    def exec(self,sql_str):
+        conn = self.connect()
+        ret = conn.execute(sql_str)
+        return ret
+    
+    def drop_table(self, table_name):
+        self.logger.info("Dropping table %s"%(table_name))
+        sql_str = "drop table if exists %s"%(table_name)
+        self.exec(sql_str)
 
     #Below are common high-level wrap functions to get db items, can be called from outside
     def get_stock_count(self):
         sql = "select * from stock_list"
-        ret = self.exec(sql)
+        ret = self.exec_and_fetch(sql)
         return len(ret)
 
 if __name__ == '__main__':
     t = Db('127.0.0.1', 'root', 'su')
     v = t.get_stock_count()
     print(v)
+    #t.drop_table('stock_daily_20200807')
 
 

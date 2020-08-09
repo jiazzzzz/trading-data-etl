@@ -3,17 +3,27 @@ import requests
 from logger import Logger
 import re
 import tushare as ts
+import json
 
 class StockInfo():
     def __init__(self):
         self.logger = Logger("StockInfo")
+    
+    def get_last_trading_date(self):        
+        self.logger.info("Getting last trading date live...")
+        url = "http://money.finance.sina.com.cn/quotes_service/api/json_v2.php/CN_MarketData.getKLineData?\
+            symbol=sh000001&scale=5&ma=no&datalen=5"
+        resp = requests.get(url)
+        date = json.loads(resp.text)   
+        ret = date[0]['day'].split(' ')[0].replace('-','')
+        self.logger.info("Last trading date is %s"%(ret))
+        return ret
 	
     def get_stock_list(self):
         tushare_api_key = '85f02fe6125d57c0cb8b467121ce63620a59e2ccc419b3a3e0f7dad7'
         pro = ts.pro_api(tushare_api_key)
         stock_list = pro.stock_basic(exchange='', list_status='L', fields='ts_code,symbol,name,area,industry,list_date')
         return stock_list
-
     
     def get_daily_info_by_page(self,page_num):
         url = "http://vip.stock.finance.sina.com.cn/quotes_service/api/json_v2.php/Market_Center.getHQNodeData?\
@@ -53,7 +63,7 @@ class StockInfo():
 
 if __name__ == '__main__':
     t = StockInfo()
-    resp = t.get_daily_info_by_page(1)
-    print(resp)
+    v = t.get_last_trading_date_live()
+    print(v)
 
 

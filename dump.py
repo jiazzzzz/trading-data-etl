@@ -16,10 +16,13 @@ def dump_stock_list(db_engine,table_name):
 	
 
 #Dump daily data from sina to database, table is by date...
-def dump_daily_data(db_engine, table_name):
+def dump_daily_data(db_engine, table_name, total_stock_count):
     stock_info = StockInfo()
-    for i in range(500):  #500*10 = total 5000 stocks, if increased, need to change 500 to a bigger value
-        info = stock_info.get_daily_info_by_page(i)
+    estimated_pages = int(1+int(total_stock_count)/100)
+    print("Total estimated pages are %s"%(estimated_pages))
+    for i in range(estimated_pages):  #50*100 = total 5000 stocks, if increased, need to change 500 to a bigger value
+        print("Retriving page %s"%(i+1))
+        info = stock_info.get_daily_info_by_page(i+1)
         data = pd.read_json(info)
         data.to_sql(table_name, db_engine, index=False, if_exists='append', chunksize=5000)
         time.sleep(1)
@@ -31,7 +34,9 @@ if __name__ == '__main__':
     db_passwd = com.read_conf('settings.conf', 'db', 'passwd')
     db = Db(db_ip, db_user, db_passwd)
     db_engine = db.create_engine()
-    today = datetime.datetime.now().strftime("%Y%m%d")
-    #dump_stock_list(db_engine, 'stock_list')
-    #dump_daily_data(db_engine, 'stock_daily_%s'%(today))
-    dump_daily_data(db_engine, 'stock_daily_20200807')
+    stock_info = StockInfo()
+    last_trading_date = stock_info.get_last_trading_date()
+    table_name = "stock_daily_%s"%(last_trading_date)
+    total_stock_count = db.get_stock_count()
+    db.drop_table(table_name)
+    dump_daily_data(db_engine, table_name, total_stock_count)
