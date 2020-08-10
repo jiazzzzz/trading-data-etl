@@ -25,24 +25,35 @@ PLACEHOLDER_OUTPUT
 
 def get_status(db, table_list):
     db_engine = db.create_engine()
-    pd_list = []
-    for tb in table_list:
-        if 'stock_daily' in tb:
-            print(tb)
-            sql = "SELECT symbol, name, changepercent, open, high, low, per, turnoverratio FROM %s\
-            WHERE turnoverratio>5 AND changepercent>5"%(tb)
-            tmp_pd = pd.read_sql(sql, db_engine)
-            print(tmp_pd)
-            pd_list.append(tmp_pd)
-    ret = pd.concat(pd_list, axis=1, join='inner')
+    
+    init_sql ="SELECT symbol, name, changepercent, turnoverratio FROM %s\
+        WHERE turnoverratio>5 AND changepercent>5"%(table_list[0])
+    print(init_sql)
+    ret = pd.read_sql(init_sql, db_engine)
+    
+    
+    for i in range(len(table_list)-1):    
+        sql = "SELECT symbol, name, changepercent,turnoverratio FROM %s\
+        WHERE turnoverratio>5 AND changepercent>5"%(table_list[i+1])
+        tmp_pd = pd.read_sql(sql, db_engine)
+        #print(tmp_pd)
+        ret = pd.merge(tmp_pd, ret, how='inner', on=['symbol'])
+        #print(ret)
     return ret 
 
+#Add a row to pd, indicating the daily chart of a stock
 def insert_image(row):
     out = {}
     image_url = "http://image.sinajs.cn/newchart/daily/n/%s.gif"%(row['symbol'])
     #print(image_url)
-    out['rx'] = "<img src=\"%s\" width=\"521\" height=\"287\" />"%(image_url)
+    out['daily_line'] = "<img src=\"%s\" width=\"521\" height=\"287\" />"%(image_url)
     return pd.Series(out)
+
+def generate_report(df):
+    html_body = df.to_html(escape=False)
+    with open("output.html",'w') as f:
+        final_output = output_template.replace('PLACEHOLDER_OUTPUT', html_body)
+        f.write(final_output)
 
 
 if __name__ == '__main__':
@@ -52,14 +63,13 @@ if __name__ == '__main__':
     db_passwd = com.read_conf('settings.conf', 'db', 'passwd')
     db = Db(db_ip, db_user, db_passwd)
 
-    table_list = db.get_db_tables()
+    table_list = db.get_db_daily_tables()
     df = get_status(db, table_list)
-    print(df)
-    #df[['rx']] = df.apply(insert_image, axis=1)
     #print(df)
-    '''
-    html_body = df.to_html(escape=False)
-    with open("output.html",'w') as f:
-        final_output = output_template.replace('PLACEHOLDER_OUTPUT', html_body)
-        f.write(final_output)
-    '''
+    df[['rx']] = df.apply(insert_image, axis=1)
+    print(df)
+
+    generate_report(df)
+    
+    
+    

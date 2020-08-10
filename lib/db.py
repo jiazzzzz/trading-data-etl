@@ -43,6 +43,13 @@ class Db():
         for tb in tbs:
             ret.append(tb[0])
         return ret
+    
+    def get_db_daily_tables(self):
+        ret = []
+        for tb in self.get_db_tables():
+            if 'stock_daily' in tb:
+                ret.append(tb)
+        return ret
 
     def get_stock_count(self):
         sql = "select * from stock_list"
@@ -54,7 +61,7 @@ if __name__ == '__main__':
     v = t.get_stock_count()
     print(v)
     #t.drop_table('stock_daily_20200807')
-    v1 = t.get_db_tables()
+    v1 = t.get_db_daily_tables()
     print(v1)
 
 
