@@ -63,7 +63,7 @@ class StockInfo():
 
 if __name__ == '__main__':
     t = StockInfo()
-    v = t.get_last_trading_date_live()
+    v = t.get_last_trading_date()
     print(v)
 
 

@@ -36,6 +36,14 @@ class Db():
         self.exec(sql_str)
 
     #Below are common high-level wrap functions to get db items, can be called from outside
+    def get_db_tables(self):
+        sql = 'show tables'
+        tbs = self.exec_and_fetch(sql)
+        ret = []
+        for tb in tbs:
+            ret.append(tb[0])
+        return ret
+
     def get_stock_count(self):
         sql = "select * from stock_list"
         ret = self.exec_and_fetch(sql)
@@ -46,5 +54,7 @@ if __name__ == '__main__':
     v = t.get_stock_count()
     print(v)
     #t.drop_table('stock_daily_20200807')
+    v1 = t.get_db_tables()
+    print(v1)
 
 

@@ -35,6 +35,13 @@ if __name__ == '__main__':
     db = Db(db_ip, db_user, db_passwd)
     db_engine = db.create_engine()
     stock_info = StockInfo()
+
+
+    #Dump stock list
+    db.drop_table("stock_list")
+    dump_stock_list(db_engine, "stock_list")
+
+    #Dump daily trading info
     last_trading_date = stock_info.get_last_trading_date()
     table_name = "stock_daily_%s"%(last_trading_date)
     total_stock_count = db.get_stock_count()
