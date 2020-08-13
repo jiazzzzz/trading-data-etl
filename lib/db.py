@@ -58,17 +58,29 @@ class Db():
 
     def get_stock_symbol_from_pinyin(self,pinyin):
         ret = []
-        sql = "select symbol from stock_list where pinyin='%s'"%(pinyin)
+        sql = "select symbol from stock_list where pinyin like \"%%"+pinyin+"%%\""
+        print(sql)
         for item in self.exec_and_fetch(sql):
             ret.append(item[0])
         return ret
+    
+    def get_stock_detail_from_name(self,stock_name):
+        ret = []
+        sql = "select symbol,industry,area from stock_list where name='%s'"%(stock_name)
+        tmp = self.exec_and_fetch(sql)
+        #print(type(tmp))
+        if len(tmp)==0:
+            return []
+        else:
+            return list(tmp[0])
 
 if __name__ == '__main__':
     t = Db('127.0.0.1', 'root', 'su')
     #v = t.get_stock_count()
     #t.drop_table('stock_daily_20200807')
     #v1 = t.get_db_daily_tables()
-    v = t.get_stock_symbol_from_pinyin('zcgf')
+    #v = t.get_stock_symbol_from_pinyin('zcgf')
+    v = t.get_stock_detail_from_name('N康希诺')
     print(v)
 
 

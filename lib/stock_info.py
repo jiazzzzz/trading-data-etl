@@ -4,6 +4,7 @@ from logger import Logger
 import re
 import tushare as ts
 import json
+from bs4 import BeautifulSoup
 
 class StockInfo():
     def __init__(self):
@@ -25,6 +26,20 @@ class StockInfo():
         stock_list = pro.stock_basic(exchange='', list_status='L', fields='ts_code,symbol,name,area,industry,list_date')
         return stock_list
     
+    def get_f10(self, stock_id): #only available to normal stock id like 000002
+        '''
+        Will return 3 values: 主营， 公司业务， 公司历史
+        '''
+        url = "http://quotes.money.163.com/f10/gszl_"+stock_id+".html"
+        resp = requests.get(url)
+        soup = BeautifulSoup(resp.text,features="lxml")
+        ret = []
+        for item in soup.find_all(colspan='3'): #find all useful informations
+            r = re.findall('>(.*?)<', str(item))
+            if len(r)>0:
+                ret.append(r[0].strip())
+        return ret
+    
     def get_daily_info_by_page(self,page_num):
         url = "http://vip.stock.finance.sina.com.cn/quotes_service/api/json_v2.php/Market_Center.getHQNodeData?\
                  page=%s&num=100&sort=changepercent&asc=0&node=hs_a&symbol=&_s_r_a=init"%(page_num)
@@ -42,7 +57,7 @@ class StockInfo():
         #Auto add sz/sh to stock_id if it doesn't exist
         if stock_id.startswith('60') or stock_id.startswith('688'):
             stock_id = "sh%s"%(stock_id)
-        elif stock_id.startswith('300') or stock_id.startswith('002'):
+        elif stock_id.startswith('300') or stock_id.startswith('002') or stock_id.startswith('000'):
             stock_id = "sz%s"%(stock_id)
         url = "http://hq.sinajs.cn/list=%s"%(stock_id)
         r = requests.get(url)
@@ -54,6 +69,7 @@ class StockInfo():
     
     def get_live_status_pretty(self,stock_id):
         info = self.get_live_status(stock_id).split(',')
+        #print(info)
         cur_price = float(info[3])
         last_day_price = float(info[2])
         open_price = float(info[1])
@@ -68,7 +84,8 @@ class StockInfo():
 
 if __name__ == '__main__':
     t = StockInfo()
-    v = t.get_last_trading_date()
+    #v = t.get_last_trading_date()
+    v = t.get_f10('603077')
     print(v)
 
 

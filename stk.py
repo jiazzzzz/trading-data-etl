@@ -1,4 +1,5 @@
 #!/usr/bin/python3
+#CLI interactive program to do live query
 import sys
 sys.path.append('./lib')
 from lib.stock_info import StockInfo
@@ -15,15 +16,20 @@ db = Db(db_ip, db_user, db_passwd)
 
 while 1:
     to_do = input("stk>")
-    if 'zx' in to_do:
+    if 'zx'==to_do:
         for s in stock_list:
             print(t.get_live_status_pretty(s))
     elif to_do.startswith('60') or to_do.startswith('688') or to_do.startswith('300') or to_do.startswith('002') or to_do.startswith('000'):
         print(t.get_live_status_pretty(to_do))
     elif 'quit' in to_do or 'exit' in to_do or 'q'==to_do:
         break
+    elif to_do.startswith('f10'):
+        stock_id = to_do.split(' ')[1]
+        v = t.get_f10(stock_id)
+        print(v)
     else:
-        stock_list = db.get_stock_symbol_from_pinyin(to_do)
-        for s in stock_list:
+        q = db.get_stock_symbol_from_pinyin(to_do)
+        for s in q:
+            print("Get stock %s"%(s))
             print(t.get_live_status_pretty(s))
 

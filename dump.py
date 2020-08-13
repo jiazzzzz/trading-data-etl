@@ -25,9 +25,14 @@ def insert_pinyin(row):
     return pd.Series(out)
 
 #Dump daily data from sina to database, table is by date...
-def dump_daily_data(db_engine, table_name, total_stock_count):
+def dump_daily_data(db):    
     stock_info = StockInfo()
+    last_trading_date = stock_info.get_last_trading_date()
+    table_name = "stock_daily_%s"%(last_trading_date)
+    total_stock_count = db.get_stock_count()
     estimated_pages = int(1+int(total_stock_count)/100)
+
+    db_engine = db.create_engine()
     print("Total estimated pages are %s"%(estimated_pages))
     for i in range(estimated_pages):  #50*100 = total 5000 stocks, if increased, need to change 500 to a bigger value
         print("Retriving page %s"%(i+1))
@@ -48,8 +53,10 @@ if __name__ == '__main__':
     #Dump stock list    
     dump_stock_list(db, "stock_list")
 
-    '''
+
     #Dump daily trading info
+    dump_daily_data(db)
+    '''
     last_trading_date = stock_info.get_last_trading_date()
     table_name = "stock_daily_%s"%(last_trading_date)
     total_stock_count = db.get_stock_count()
