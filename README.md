@@ -19,6 +19,7 @@ dump.py - To dump latest stock info and daily trading data
 sg.py - To get today new stock (Will not be saved to database)
 mon.py - To monitor stock live status
 status.py - To get market status after information is dumped to database
+xg.py - To get the stock list which is buy candidates
 ```
 
 #### DB

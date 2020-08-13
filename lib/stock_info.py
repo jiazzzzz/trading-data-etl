@@ -39,7 +39,12 @@ class StockInfo():
 
     def get_live_status(self,stock_id):
         ret = ""
-        url = "http://hq.sinajs.cn/list=%s"%(stock_id)        
+        #Auto add sz/sh to stock_id if it doesn't exist
+        if stock_id.startswith('60') or stock_id.startswith('688'):
+            stock_id = "sh%s"%(stock_id)
+        elif stock_id.startswith('300') or stock_id.startswith('002'):
+            stock_id = "sz%s"%(stock_id)
+        url = "http://hq.sinajs.cn/list=%s"%(stock_id)
         r = requests.get(url)
         if r.status_code != 200:
             return ret

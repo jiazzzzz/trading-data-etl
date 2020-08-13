@@ -27,7 +27,7 @@ def get_status(db, table_list):
     db_engine = db.create_engine()
     
     init_sql ="SELECT symbol, name, changepercent, turnoverratio FROM %s\
-        WHERE turnoverratio>5 AND changepercent>5"%(table_list[0])
+        WHERE turnoverratio>5 AND changepercent>3"%(table_list[0])
     print(init_sql)
     ret = pd.read_sql(init_sql, db_engine)
     
@@ -49,12 +49,17 @@ def insert_image(row):
     out['daily_line'] = "<img src=\"%s\" width=\"521\" height=\"287\" />"%(image_url)
     return pd.Series(out)
 
-def generate_report(df):
+def generate_report(df,output_file):
     html_body = df.to_html(escape=False)
-    with open("output.html",'w') as f:
+    with open(output_file,'w') as f:
         final_output = output_template.replace('PLACEHOLDER_OUTPUT', html_body)
         f.write(final_output)
 
+def xg1():
+    pass
+
+def xg2():
+    pass
 
 if __name__ == '__main__':
     com = Common()
@@ -64,12 +69,8 @@ if __name__ == '__main__':
     db = Db(db_ip, db_user, db_passwd)
 
     table_list = db.get_db_daily_tables()
-    df = get_status(db, table_list)
-    #print(df)
+    df = get_status(db, table_list)    
     df[['rx']] = df.apply(insert_image, axis=1)
     print(df)
 
     generate_report(df)
-    
-    
-    

@@ -9,11 +9,20 @@ import datetime
 import time
 
 #Dump stock list from tushare to database
-def dump_stock_list(db_engine,table_name):
+def dump_stock_list(db,table_name):    
+    db.drop_table("stock_list")
+    db_engine = db.create_engine()
     stock_info = StockInfo()
     stock_list = stock_info.get_stock_list()
+    stock_list[['pinyin']] = stock_list.apply(insert_pinyin, axis=1)
+    print(stock_list)
     stock_list.to_sql(table_name, db_engine, index=False, if_exists='append', chunksize=5000)
-	
+
+def insert_pinyin(row):
+    out = {}
+    com = Common()
+    out['pinyin'] = com.get_py_from_name(row['name'])
+    return pd.Series(out)
 
 #Dump daily data from sina to database, table is by date...
 def dump_daily_data(db_engine, table_name, total_stock_count):
@@ -33,17 +42,17 @@ if __name__ == '__main__':
     db_user = com.read_conf('settings.conf', 'db', 'user')
     db_passwd = com.read_conf('settings.conf', 'db', 'passwd')
     db = Db(db_ip, db_user, db_passwd)
-    db_engine = db.create_engine()
+    
     stock_info = StockInfo()
 
+    #Dump stock list    
+    dump_stock_list(db, "stock_list")
 
-    #Dump stock list
-    db.drop_table("stock_list")
-    dump_stock_list(db_engine, "stock_list")
-
+    '''
     #Dump daily trading info
     last_trading_date = stock_info.get_last_trading_date()
     table_name = "stock_daily_%s"%(last_trading_date)
     total_stock_count = db.get_stock_count()
     db.drop_table(table_name)
     dump_daily_data(db_engine, table_name, total_stock_count)
+    '''

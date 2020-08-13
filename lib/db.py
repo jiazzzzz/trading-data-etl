@@ -56,12 +56,19 @@ class Db():
         ret = self.exec_and_fetch(sql)
         return len(ret)
 
+    def get_stock_symbol_from_pinyin(self,pinyin):
+        ret = []
+        sql = "select symbol from stock_list where pinyin='%s'"%(pinyin)
+        for item in self.exec_and_fetch(sql):
+            ret.append(item[0])
+        return ret
+
 if __name__ == '__main__':
     t = Db('127.0.0.1', 'root', 'su')
-    v = t.get_stock_count()
-    print(v)
+    #v = t.get_stock_count()
     #t.drop_table('stock_daily_20200807')
-    v1 = t.get_db_daily_tables()
-    print(v1)
+    #v1 = t.get_db_daily_tables()
+    v = t.get_stock_symbol_from_pinyin('zcgf')
+    print(v)
 
 
