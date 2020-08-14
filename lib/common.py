@@ -1,5 +1,7 @@
 from logger import Logger
 import configparser
+from prettytable import PrettyTable
+import prettytable as pt
 
 class Common():
     def __init__(self):
@@ -10,6 +12,9 @@ class Common():
         config.read(config_file)
         value = config.get(section, key)
         return value
+
+    def pretty_for_df(self,df):
+        pass
     
     def get_py_from_name(self, stock_name): #get pingyin from the stock name in Chinese
         if stock_name == None:

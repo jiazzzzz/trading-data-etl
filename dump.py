@@ -50,7 +50,7 @@ if __name__ == '__main__':
     
     stock_info = StockInfo()
 
-    #Dump stock list    
+    #Dump stock list
     dump_stock_list(db, "stock_list")
 
 
