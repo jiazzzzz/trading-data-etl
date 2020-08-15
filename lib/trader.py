@@ -4,8 +4,8 @@ from logger import Logger
 
 '''
 Trading log looks like below:
-cash,holding,date-time
-100000,{'000002':300;'000151':400},2020-08-14 12:00:00
+cash#holding#date-time#trading activity
+100000#{'000002':300,'000151':400}#2020-08-14 12:00:00#buy 000002:300
 '''
 
 class Trader():
@@ -13,12 +13,19 @@ class Trader():
         self.trading_log = trading_log
         self.logger = Logger("StockTrade")
         if not os.path.exists(trading_log):
+            self.logger.info("No trading log %s exist, creating..."%(trading_log))
             with open(self.trading_log,'w') as f:
-                item = "%s,{},%s"%(init_rmb,self._get_date())
+                item = "%s#{}#%s#init trading log\n"%(init_rmb,self._get_date())
                 f.write(item)
+        else:
+            self.logger.info("Trading log %s already exist, continue to record"%(trading_log))
 
     def _get_date(self):
         return datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    
+    def _writing_trading_log(self,trading_action):
+        with open(self.trading_log,'a') as f:
+            f.write(trading_action)
 
     def buy(self,stock_id,stock_count,stock_price):
         cur = self.get_cur_status()        
@@ -28,20 +35,59 @@ class Trader():
         else:
             self.logger.info("Start to buy stock %s with count %s at price %s"%(stock_id, stock_count, stock_price))
             stocks = cur['stocks']
-            for (s_id,s_count) in stocks.items():
-                print(s_id)
-                print(s_count)
-            pass
+            self.logger.info("Current stocks are %s"%(stocks))
+            if stocks == {}:
+                self.logger.info("目前是空仓状态，可以买入")
+                stocks[stock_id]=stock_count
+                trading_activity = "%s#%s#%s#Buy %s:%s at price %s\n"%(cash,str(stocks),self._get_date(),stock_id,stock_count,stock_price)
+                self.logger.info(trading_activity)
+                self._writing_trading_log(trading_activity)
+            else:
+                for (s_id,s_count) in stocks.items():
+                    if s_id == stock_id:
+                        self.logger.info("Already have stock %s, 加仓%s股"%(stock_id,stock_count))
+                        stocks[stock_id] = s_count+stock_count
+                        self.logger.info("目前持有股票%s:%s股"%(stock_id,stocks[stock_id]))
+                        trading_activity = "%s#%s#%s#Buy %s:%s at price %s\n"%(cash,str(stocks),self._get_date(),stock_id,stock_count,stock_price)
+                        self.logger.info(trading_activity)
+                        self._writing_trading_log(trading_activity)
+                        return
+                #When buy a new stock_id
+                self.logger.info("买入的股票%s目前没有持仓"%(stock_id))
+                stocks[stock_id] = stock_count
+                trading_activity = "%s#%s#%s#Buy %s:%s at price %s\n"%(cash,str(stocks),self._get_date(),stock_id,stock_count,stock_price)
+                self.logger.info(trading_activity)
+                self._writing_trading_log(trading_activity)
 
     def sell(self,stock_id,stock_count,stock_price):
-        pass
+        cur = self.get_cur_status()
+        stocks = cur['stocks']
+        if stocks == {}:
+            self.logger.info("目前持仓没有股票，不能卖出")
+            return
+        if not stock_id in stocks.keys():
+            self.logger.info("目前想要卖出的股票没有持仓，放弃")
+            return
+        for (s_id,s_count) in stocks.items():
+            if s_id == stock_id:
+                self.logger.info("目前股票%s持仓%s"%(s_id,s_count))
+                if s_count<stock_count:
+                    self.logger.info("股票持仓小于卖出数量，不能卖出")
+                    return
+                stocks[stock_id] = s_count-stock_count
+                cash = cur['cash'] + stock_count*stock_price
+                trading_activity = "%s#%s#%s#Sell %s:%s at price %s\n"%(cash,str(stocks),self._get_date(),stock_id,stock_count,stock_price)
+                self.logger.info(trading_activity)
+                self._writing_trading_log(trading_activity)
+
 
     def get_cur_status(self):
         ret = {}
         with open(self.trading_log,'r') as f:
             lines = f.readlines()
             item = lines[-1] #get last line
-            temp_arr = item.split(',')
+            temp_arr = item.split('#')
+            self.logger.info(temp_arr[1])
             ret['cash'] = int(temp_arr[0])
             ret['stocks'] = eval(temp_arr[1])
         return ret
@@ -50,3 +96,5 @@ if __name__ == '__main__':
     t = Trader('test.log')
     v = t.get_cur_status()
     print(v)
+    t.buy('000415',1000,15)
+    #t.sell("000415",1500,20)
