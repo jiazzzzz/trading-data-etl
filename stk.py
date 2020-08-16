@@ -5,6 +5,7 @@ sys.path.append('./lib')
 from lib.stock_info import StockInfo
 from lib.common import Common
 from lib.db import Db
+from lib.trader import Trader
 from tabulate import tabulate
 
 
@@ -15,6 +16,8 @@ db_ip = com.read_conf('settings.conf', 'db', 'ip')
 db_user = com.read_conf('settings.conf', 'db', 'user')
 db_passwd = com.read_conf('settings.conf', 'db', 'passwd')
 db = Db(db_ip, db_user, db_passwd)
+
+sim_trader = Trader('jia-sim.log')
 
 while 1:
     to_do = input("stk>")
@@ -37,6 +40,17 @@ while 1:
         stock_id = to_do.split(' ')[1]
         v = t.get_f10(stock_id)
         print(v)
+    elif to_do.startswith('buy') or to_do.startswith('BUY'): #buy stock 
+        arr = to_do.split(' ')
+        print(arr)
+        sim_trader.buy(arr[1],int(arr[2]),float(arr[3]))
+    elif to_do.startswith('sell') or to_do.startswith('SELL'): #sell stock
+        arr = to_do.split(' ')
+        sim_trader.sell(arr[1],int(arr[2]),float(arr[3]))
+    elif to_do.startswith('holding'): #获取现在资金和持股状态
+        status = sim_trader.get_cur_status()
+        print("当前资金: %s"%(status['cash']))
+        print("当前持股: %s"%(status['stocks']))
     else:
         q = db.get_stock_symbol_from_pinyin(to_do)
         for s in q:

@@ -101,7 +101,7 @@ class Trader():
             item = lines[-1] #get last line
             temp_arr = item.split('#')
             self.logger.info(temp_arr[1])
-            ret['cash'] = int(temp_arr[0])
+            ret['cash'] = float(temp_arr[0])
             ret['stocks'] = eval(temp_arr[1])
         return ret
 
