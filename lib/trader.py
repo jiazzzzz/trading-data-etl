@@ -28,8 +28,19 @@ class Trader():
             f.write(trading_action)
 
     def buy(self,stock_id,stock_count,stock_price):
-        cur = self.get_cur_status()        
-        cash = cur['cash'] - stock_count*stock_price
+        '''
+        Example: buy('000002',1000, 22.2) means 以22.2的价格买入万科1000股
+                 buy('000002',0.3, 22.2) means 以22.2的价格买入万科剩余资金的30%股份
+        '''
+        cur = self.get_cur_status()
+        if stock_count>=100:       #普通买入模式  
+            self.logger.info("普通买入模式")
+            cash = cur['cash'] - stock_count*stock_price
+        else: #资金比买入模式
+            self.logger.info("资金比买入模式，买入剩余资金的百分之%s"%(int(stock_count*100)))
+            stock_count = int((cur['cash']*stock_count)/stock_price)
+            self.logger.info("目前可以买%s共%s股"%(stock_id,stock_count))
+            cash = cur['cash'] - stock_count*stock_price
         if cash<0:
             self.logger.info("Cash not enough, skip this buy operation...")
         else:
@@ -74,8 +85,10 @@ class Trader():
                 if s_count<stock_count:
                     self.logger.info("股票持仓小于卖出数量，不能卖出")
                     return
+                if stock_count<1 and s_count*stock_count>100: #百分比卖出模式，保证卖出数量大于100股
+                    stock_count = s_count*stock_count
                 stocks[stock_id] = s_count-stock_count
-                cash = cur['cash'] + stock_count*stock_price
+                cash = cur['cash'] + int(stock_count*stock_price)
                 trading_activity = "%s#%s#%s#Sell %s:%s at price %s\n"%(cash,str(stocks),self._get_date(),stock_id,stock_count,stock_price)
                 self.logger.info(trading_activity)
                 self._writing_trading_log(trading_activity)
@@ -96,5 +109,7 @@ if __name__ == '__main__':
     t = Trader('test.log')
     v = t.get_cur_status()
     print(v)
-    t.buy('000415',1000,15)
-    #t.sell("000415",1500,20)
+    #t.buy('000415',1000,15)
+    #t.buy('000002',0.3,15)
+    #t.sell("000415",0.3,20)
+    t.sell('000002',0.3,10)
