@@ -63,9 +63,12 @@ class StockInfo():
         return ret
     
     #Below functions are getting data from sina
-    def get_daily_info_by_page(self,page_num):
+    def get_daily_info_by_page(self,page_num,sort_by='changepercent',order='desc'):
+        asc = 0
+        if order=='asc':
+            asc = 1
         url = "http://vip.stock.finance.sina.com.cn/quotes_service/api/json_v2.php/Market_Center.getHQNodeData?\
-                 page=%s&num=100&sort=changepercent&asc=0&node=hs_a&symbol=&_s_r_a=init"%(page_num)
+                 page=%s&num=100&sort=%s&asc=%s&node=hs_a&symbol=&_s_r_a=init"%(page_num,sort_by,asc)
         resp =  requests.get(url)
         #self.logger.info(resp.text)
         if resp.text == 'null':
@@ -110,7 +113,13 @@ if __name__ == '__main__':
     #v = t.get_last_trading_date()
     #v = t.get_f10('603077')
     #v = t.get_stock_list()
-    v = t.get_market_status_from_xueqiu('asc', 1, 100)
-    print(v)
+    #v = t.get_daily_info_by_page(1,sort_by='turnoverratio')
+    v = t.get_daily_info_by_page(1)
+    df = pd.read_json(v)
+    #p1 = df[df.changepercent<5]
+    df = df[df.turnoverratio<10]
+    df = df[df.turnoverratio>3]
+    with pd.option_context('display.max_rows', None, 'display.max_columns', None):  # more options can be specified also
+        print(df)
 
 
