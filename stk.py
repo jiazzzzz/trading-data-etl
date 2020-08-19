@@ -42,15 +42,25 @@ while 1:
         print(v)
     elif to_do.startswith('buy') or to_do.startswith('BUY'): #buy stock 
         arr = to_do.split(' ')
-        print(arr)
-        sim_trader.buy(arr[1],int(arr[2]),float(arr[3]))
+        stock_id = arr[1]
+        stock_count = arr[2]
+        cur_price = float(t.get_live_status(stock_id).split(',')[3])
+        sim_trader.buy(stock_id,stock_count,cur_price)
     elif to_do.startswith('sell') or to_do.startswith('SELL'): #sell stock
         arr = to_do.split(' ')
-        sim_trader.sell(arr[1],int(arr[2]),float(arr[3]))
+        stock_id = arr[1]
+        stock_count = arr[2]
+        cur_price = float(t.get_live_status(stock_id).split(',')[3])
+        sim_trader.sell(stock_id,stock_count,cur_price)
     elif to_do.startswith('holding'): #获取现在资金和持股状态
         status = sim_trader.get_cur_status()
         print("当前资金: %s"%(status['cash']))
         print("当前持股: %s"%(status['stocks']))
+        total_value = 0
+        for (s_id,s_count) in status['stocks'].items():
+            total_value = total_value + s_count * float(t.get_live_status(s_id).split(',')[3])
+        print("当前市值: %s"%(total_value))
+        print("当前盈亏：%s%%"%((total_value+float(status['cash'])-100000)/1000))
     else:
         q = db.get_stock_symbol_from_pinyin(to_do)
         for s in q:

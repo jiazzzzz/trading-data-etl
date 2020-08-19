@@ -12,6 +12,6 @@ today = datetime.datetime.now().strftime("%Y-%m-%d")
 #print(today)
 
 for item in table_data:
-    if item[4] == today:
+    if item[4] == today and not (item[2].startswith('688') or item[2].startswith('300')):
         print(item)
 
