@@ -1,2 +1,0 @@
-#!/bin/bash
-watch -n 2 python3 mon.py
