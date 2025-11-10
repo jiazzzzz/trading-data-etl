@@ -1,0 +1,619 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>股票历史数据查询 - Stock History</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .header {
+            background: white;
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            margin-bottom: 30px;
+        }
+
+        h1 {
+            color: #333;
+            margin-bottom: 20px;
+            font-size: 32px;
+        }
+
+        .search-box {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        input[type="text"], input[type="date"], select {
+            flex: 1;
+            padding: 12px 20px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 16px;
+            transition: all 0.3s;
+        }
+
+        input[type="text"]:focus, input[type="date"]:focus, select:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        button {
+            padding: 12px 30px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        .info-box {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+
+        .info-box p {
+            margin: 5px 0;
+            color: #666;
+        }
+
+        .chart-container {
+            background: white;
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            margin-bottom: 30px;
+        }
+
+        #chart {
+            width: 100%;
+            height: 500px;
+        }
+
+        .data-table {
+            background: white;
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            overflow-x: auto;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #e0e0e0;
+        }
+
+        th {
+            background: #f8f9fa;
+            font-weight: 600;
+            color: #333;
+        }
+
+        tr:hover {
+            background: #f8f9fa;
+        }
+
+        .positive {
+            color: #e74c3c;
+        }
+
+        .negative {
+            color: #27ae60;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+        }
+
+        .error {
+            background: #fee;
+            color: #c33;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 20px 0;
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .stat-card {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+        }
+
+        .stat-label {
+            color: #666;
+            font-size: 14px;
+            margin-bottom: 5px;
+        }
+
+        .stat-value {
+            color: #333;
+            font-size: 24px;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <h1>📈 股票历史数据查询</h1>
+                <a href="index.html" style="text-decoration: none;">
+                    <button style="background: #f8f9fa; color: #333; border: 1px solid #ddd;">
+                        <i class="fas fa-arrow-left" style="margin-right: 5px;"></i>
+                        返回股票列表
+                    </button>
+                </a>
+            </div>
+            
+            <div class="search-box">
+                <input type="text" id="stockCode" placeholder="输入股票代码 (例如: 600000)" value="600000">
+                <select id="period">
+                    <option value="60">最近60天</option>
+                    <option value="30">最近30天</option>
+                    <option value="90">最近90天</option>
+                    <option value="custom">自定义日期</option>
+                </select>
+                <input type="date" id="startDate" style="display:none;">
+                <input type="date" id="endDate" style="display:none;">
+                <button onclick="loadHistory()">查询</button>
+            </div>
+
+            <div id="infoBox" class="info-box" style="display:none;">
+                <p><strong>股票代码:</strong> <span id="infoCode"></span></p>
+                <p><strong>股票名称:</strong> <span id="infoName"></span></p>
+                <p><strong>交易所:</strong> <span id="infoExchange"></span></p>
+                <p><strong>数据条数:</strong> <span id="infoCount"></span></p>
+            </div>
+
+            <div id="stats" class="stats" style="display:none;">
+                <div class="stat-card">
+                    <div class="stat-label">最新价</div>
+                    <div class="stat-value" id="latestPrice">-</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">最高价</div>
+                    <div class="stat-value" id="highestPrice">-</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">最低价</div>
+                    <div class="stat-value" id="lowestPrice">-</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">平均价</div>
+                    <div class="stat-value" id="avgPrice">-</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="chart-container">
+            <h2 style="margin-bottom: 20px;">价格走势图</h2>
+            <div id="chart"></div>
+        </div>
+
+        <div class="data-table">
+            <h2 style="margin-bottom: 20px;">历史数据明细</h2>
+            <div id="tableContainer"></div>
+        </div>
+    </div>
+
+    <script src="echarts.min.js"></script>
+    <script>
+        const API_BASE = 'http://localhost:8080/api';
+        let chartInstance = null;
+
+        // Period selector change handler
+        document.getElementById('period').addEventListener('change', function() {
+            const startDate = document.getElementById('startDate');
+            const endDate = document.getElementById('endDate');
+            if (this.value === 'custom') {
+                startDate.style.display = 'block';
+                endDate.style.display = 'block';
+            } else {
+                startDate.style.display = 'none';
+                endDate.style.display = 'none';
+            }
+        });
+
+        async function loadHistory() {
+            const stockCode = document.getElementById('stockCode').value.trim();
+            if (!stockCode) {
+                alert('请输入股票代码');
+                return;
+            }
+
+            const period = document.getElementById('period').value;
+            let url = '';
+
+            if (period === 'custom') {
+                const startDate = document.getElementById('startDate').value.replace(/-/g, '');
+                const endDate = document.getElementById('endDate').value.replace(/-/g, '');
+                if (!startDate || !endDate) {
+                    alert('请选择开始和结束日期');
+                    return;
+                }
+                url = `${API_BASE}/history/${stockCode}/range?start=${startDate}&end=${endDate}`;
+            } else {
+                url = `${API_BASE}/history/${stockCode}?limit=${period}`;
+            }
+
+            try {
+                document.getElementById('tableContainer').innerHTML = '<div class="loading">加载中...</div>';
+                
+                const response = await fetch(url);
+                const result = await response.json();
+
+                if (result.error) {
+                    throw new Error(result.error);
+                }
+
+                if (!result.data || result.data.length === 0) {
+                    document.getElementById('tableContainer').innerHTML = '<div class="error">未找到该股票的历史数据</div>';
+                    return;
+                }
+
+                displayInfo(result);
+                displayStats(result.data);
+                displayChart(result.data);
+                displayTable(result.data);
+
+            } catch (error) {
+                console.error('Error:', error);
+                document.getElementById('tableContainer').innerHTML = `<div class="error">加载失败: ${error.message}</div>`;
+            }
+        }
+
+        function displayInfo(result) {
+            const infoBox = document.getElementById('infoBox');
+            const data = result.data[0];
+            
+            document.getElementById('infoCode').textContent = data.stock_code;
+            document.getElementById('infoName').textContent = data.stock_name;
+            document.getElementById('infoExchange').textContent = data.exchange;
+            document.getElementById('infoCount').textContent = result.count;
+            
+            infoBox.style.display = 'block';
+        }
+
+        function displayStats(data) {
+            const stats = document.getElementById('stats');
+            const prices = data.map(d => d.close);
+            
+            const latest = prices[0];
+            const highest = Math.max(...prices);
+            const lowest = Math.min(...prices);
+            const avg = (prices.reduce((a, b) => a + b, 0) / prices.length).toFixed(2);
+            
+            document.getElementById('latestPrice').textContent = latest.toFixed(2);
+            document.getElementById('highestPrice').textContent = highest.toFixed(2);
+            document.getElementById('lowestPrice').textContent = lowest.toFixed(2);
+            document.getElementById('avgPrice').textContent = avg;
+            
+            stats.style.display = 'grid';
+        }
+
+        function displayChart(data) {
+            // Reverse data for chronological order
+            const sortedData = [...data].reverse();
+            
+            const dates = sortedData.map(d => formatDate(d.trade_date));
+            const closes = sortedData.map(d => d.close);
+            const volumes = sortedData.map(d => d.volume / 10000); // Convert to 万
+            
+            // Prepare candlestick data [open, close, low, high]
+            const candlestickData = sortedData.map(d => [d.open, d.close, d.low, d.high]);
+            
+            // Pre-calculate change data (from previous day's close to today's close)
+            const changeData = sortedData.map((d, index) => {
+                if (index === 0) return { change: 0, changePercent: 0 };
+                const prevClose = sortedData[index - 1].close;
+                const change = d.close - prevClose;
+                const changePercent = prevClose > 0 ? ((change / prevClose) * 100) : 0;
+                return { change, changePercent };
+            });
+            
+            // Calculate MA5 and MA10
+            const ma5 = calculateMA(closes, 5);
+            const ma10 = calculateMA(closes, 10);
+
+            if (!chartInstance) {
+                chartInstance = echarts.init(document.getElementById('chart'));
+            }
+
+            const option = {
+                tooltip: {
+                    trigger: 'axis',
+                    axisPointer: {
+                        type: 'cross'
+                    },
+                    formatter: function(params) {
+                        let result = params[0].axisValue + '<br/>';
+                        const dataIndex = params[0].dataIndex;
+                        
+                        params.forEach(param => {
+                            if (param.seriesName === 'K线') {
+                                const data = param.data;
+                                const open = data[1];
+                                const close = data[2];
+                                const low = data[3];
+                                const high = data[4];
+                                
+                                // Use pre-calculated change data
+                                const change = changeData[dataIndex].change;
+                                const changePercent = changeData[dataIndex].changePercent;
+                                
+                                // Chinese stock market convention: Red = up, Green = down
+                                // Use same colors as table CSS
+                                const changeColor = change > 0 ? '#e74c3c' : (change < 0 ? '#27ae60' : '#999');
+                                const changeSign = change >= 0 ? '+' : '';
+                                
+                                result += `开盘: ${open.toFixed(2)}<br/>`;
+                                result += `收盘: ${close.toFixed(2)}<br/>`;
+                                result += `最低: ${low.toFixed(2)}<br/>`;
+                                result += `最高: ${high.toFixed(2)}<br/>`;
+                                result += `<span style="color: ${changeColor}">涨跌: ${changeSign}${change.toFixed(2)} (${changeSign}${changePercent.toFixed(2)}%)</span><br/>`;
+                            } else {
+                                result += `${param.marker}${param.seriesName}: ${param.value}<br/>`;
+                            }
+                        });
+                        return result;
+                    }
+                },
+                legend: {
+                    data: ['K线', 'MA5', 'MA10', '成交量(万)']
+                },
+                grid: [
+                    {
+                        left: '10%',
+                        right: '10%',
+                        top: '10%',
+                        height: '45%',
+                        bottom: '35%'
+                    },
+                    {
+                        left: '10%',
+                        right: '10%',
+                        top: '70%',
+                        height: '18%',
+                        bottom: '5%'
+                    }
+                ],
+                xAxis: [
+                    {
+                        type: 'category',
+                        data: dates,
+                        gridIndex: 0,
+                        axisLabel: {
+                            show: false
+                        }
+                    },
+                    {
+                        type: 'category',
+                        data: dates,
+                        gridIndex: 1,
+                        axisLabel: {
+                            rotate: 45,
+                            fontSize: 10
+                        }
+                    }
+                ],
+                yAxis: [
+                    {
+                        type: 'value',
+                        scale: true,
+                        gridIndex: 0,
+                        splitLine: {
+                            show: true
+                        }
+                    },
+                    {
+                        type: 'value',
+                        scale: true,
+                        gridIndex: 1,
+                        splitLine: {
+                            show: false
+                        },
+                        axisLabel: {
+                            formatter: '{value}万'
+                        }
+                    }
+                ],
+                series: [
+                    {
+                        name: 'K线',
+                        type: 'candlestick',
+                        data: candlestickData,
+                        itemStyle: {
+                            color: '#ef4444',      // Red for rising (收盘 > 开盘)
+                            color0: '#10b981',     // Green for falling (收盘 < 开盘)
+                            borderColor: '#ef4444',
+                            borderColor0: '#10b981'
+                        },
+                        xAxisIndex: 0,
+                        yAxisIndex: 0
+                    },
+                    {
+                        name: 'MA5',
+                        type: 'line',
+                        data: ma5,
+                        smooth: true,
+                        lineStyle: {
+                            width: 1.5,
+                            opacity: 0.8
+                        },
+                        showSymbol: false,
+                        xAxisIndex: 0,
+                        yAxisIndex: 0
+                    },
+                    {
+                        name: 'MA10',
+                        type: 'line',
+                        data: ma10,
+                        smooth: true,
+                        lineStyle: {
+                            width: 1.5,
+                            opacity: 0.8
+                        },
+                        showSymbol: false,
+                        xAxisIndex: 0,
+                        yAxisIndex: 0
+                    },
+                    {
+                        name: '成交量(万)',
+                        type: 'bar',
+                        data: volumes,
+                        itemStyle: {
+                            color: function(params) {
+                                const index = params.dataIndex;
+                                if (index === 0) return '#999';
+                                // Red if price increased, green if decreased
+                                return sortedData[index].close >= sortedData[index].open ? '#ef4444' : '#10b981';
+                            }
+                        },
+                        xAxisIndex: 1,
+                        yAxisIndex: 1
+                    }
+                ]
+            };
+
+            chartInstance.setOption(option);
+        }
+
+        function displayTable(data) {
+            let html = '<table><thead><tr>';
+            html += '<th>日期</th><th>开盘</th><th>最高</th><th>最低</th><th>收盘</th><th>涨跌</th><th>涨跌幅</th><th>成交量</th><th>成交额</th>';
+            html += '</tr></thead><tbody>';
+
+            data.forEach((row, index) => {
+                // Calculate change from previous day's close to today's close
+                let change = '-';
+                let changePercent = '-';
+                let changeClass = '';
+                
+                if (index < data.length - 1) {
+                    const prevClose = data[index + 1].close;
+                    change = (row.close - prevClose).toFixed(2);
+                    changePercent = ((change / prevClose) * 100).toFixed(2);
+                    changeClass = change > 0 ? 'positive' : (change < 0 ? 'negative' : '');
+                }
+
+                html += '<tr>';
+                html += `<td>${formatDate(row.trade_date)}</td>`;
+                html += `<td>${row.open.toFixed(2)}</td>`;
+                html += `<td>${row.high.toFixed(2)}</td>`;
+                html += `<td>${row.low.toFixed(2)}</td>`;
+                html += `<td>${row.close.toFixed(2)}</td>`;
+                html += `<td class="${changeClass}">${change !== '-' ? (change > 0 ? '+' : '') + change : '-'}</td>`;
+                html += `<td class="${changeClass}">${changePercent !== '-' ? (changePercent > 0 ? '+' : '') + changePercent + '%' : '-'}</td>`;
+                html += `<td>${formatNumber(row.volume)}</td>`;
+                html += `<td>${formatAmount(row.amount)}</td>`;
+                html += '</tr>';
+            });
+
+            html += '</tbody></table>';
+            document.getElementById('tableContainer').innerHTML = html;
+        }
+
+        function calculateMA(data, period) {
+            const result = [];
+            for (let i = 0; i < data.length; i++) {
+                if (i < period - 1) {
+                    result.push(null);
+                } else {
+                    const sum = data.slice(i - period + 1, i + 1).reduce((a, b) => a + b, 0);
+                    result.push((sum / period).toFixed(2));
+                }
+            }
+            return result;
+        }
+
+        function formatDate(dateStr) {
+            if (!dateStr || dateStr.length !== 8) return dateStr;
+            return `${dateStr.substr(0, 4)}-${dateStr.substr(4, 2)}-${dateStr.substr(6, 2)}`;
+        }
+
+        function formatNumber(num) {
+            return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+        }
+
+        function formatAmount(amount) {
+            if (amount >= 100000000) {
+                return (amount / 100000000).toFixed(2) + '亿';
+            } else if (amount >= 10000) {
+                return (amount / 10000).toFixed(2) + '万';
+            }
+            return amount.toFixed(2);
+        }
+
+        // Get stock code from URL parameter
+        function getUrlParameter(name) {
+            const urlParams = new URLSearchParams(window.location.search);
+            return urlParams.get(name);
+        }
+
+        // Load default stock on page load
+        window.onload = function() {
+            // Check if stock code is provided in URL
+            const codeFromUrl = getUrlParameter('code');
+            if (codeFromUrl) {
+                document.getElementById('stockCode').value = codeFromUrl;
+            }
+            loadHistory();
+        };
+
+        // Handle window resize
+        window.addEventListener('resize', function() {
+            if (chartInstance) {
+                chartInstance.resize();
+            }
+        });
+    </script>
+</body>
+</html>

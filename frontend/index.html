@@ -1,0 +1,793 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>股票数据分析平台 - Stock Data Platform</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Vue 3 -->
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    
+    <!-- ECharts - Local copy (no CDN needed) -->
+    <script src="echarts.min.js"></script>
+    
+    <!-- Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        [v-cloak] { display: none; }
+        
+        .gradient-bg {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        
+        .card-hover {
+            transition: all 0.3s ease;
+        }
+        
+        .card-hover:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+        }
+        
+        .chart-container {
+            min-height: 400px;
+        }
+        
+        .positive { color: #10b981; }
+        .negative { color: #ef4444; }
+        
+        .loading-spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .fade-enter-active, .fade-leave-active {
+            transition: opacity 0.3s;
+        }
+        
+        .fade-enter-from, .fade-leave-to {
+            opacity: 0;
+        }
+    </style>
+</head>
+<body class="bg-gray-50">
+    <div id="app" v-cloak>
+        <!-- Header -->
+        <header class="gradient-bg text-white shadow-lg">
+            <div class="container mx-auto px-4 py-6">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center space-x-4">
+                        <i class="fas fa-chart-line text-3xl"></i>
+                        <div>
+                            <h1 class="text-2xl font-bold">股票数据分析平台</h1>
+                            <p class="text-sm opacity-90">Stock Data Analysis Platform</p>
+                        </div>
+                    </div>
+                    <div class="flex items-center space-x-4">
+                        <button @click="refreshData" class="bg-white bg-opacity-20 hover:bg-opacity-30 px-4 py-2 rounded-lg transition">
+                            <i class="fas fa-sync-alt" :class="{'fa-spin': loading}"></i>
+                            刷新
+                        </button>
+                        <button @click="toggleTheme" class="bg-white bg-opacity-20 hover:bg-opacity-30 px-4 py-2 rounded-lg transition">
+                            <i class="fas" :class="darkMode ? 'fa-sun' : 'fa-moon'"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="container mx-auto px-4 py-8">
+            <!-- Stats Cards -->
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+                <div class="bg-white rounded-xl shadow-md p-6 card-hover">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-gray-500 text-sm">总股票数</p>
+                            <p class="text-3xl font-bold text-gray-800">{{ stats.totalStocks }}</p>
+                        </div>
+                        <div class="bg-blue-100 p-4 rounded-full">
+                            <i class="fas fa-database text-blue-600 text-2xl"></i>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-white rounded-xl shadow-md p-6 card-hover">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-gray-500 text-sm">上涨股票</p>
+                            <p class="text-3xl font-bold positive">{{ stats.gainers }}</p>
+                        </div>
+                        <div class="bg-green-100 p-4 rounded-full">
+                            <i class="fas fa-arrow-up text-green-600 text-2xl"></i>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-white rounded-xl shadow-md p-6 card-hover">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-gray-500 text-sm">下跌股票</p>
+                            <p class="text-3xl font-bold negative">{{ stats.losers }}</p>
+                        </div>
+                        <div class="bg-red-100 p-4 rounded-full">
+                            <i class="fas fa-arrow-down text-red-600 text-2xl"></i>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-white rounded-xl shadow-md p-6 card-hover">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-gray-500 text-sm">数据表</p>
+                            <p class="text-3xl font-bold text-gray-800">{{ stats.tables }}</p>
+                        </div>
+                        <div class="bg-purple-100 p-4 rounded-full">
+                            <i class="fas fa-table text-purple-600 text-2xl"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tabs -->
+            <div class="bg-white rounded-xl shadow-md mb-8">
+                <div class="border-b border-gray-200">
+                    <nav class="flex space-x-8 px-6" aria-label="Tabs">
+                        <button 
+                            v-for="tab in tabs" 
+                            :key="tab.id"
+                            @click="activeTab = tab.id"
+                            :class="[
+                                'py-4 px-1 border-b-2 font-medium text-sm transition',
+                                activeTab === tab.id 
+                                    ? 'border-purple-500 text-purple-600' 
+                                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                            ]"
+                        >
+                            <i :class="tab.icon" class="mr-2"></i>
+                            {{ tab.name }}
+                        </button>
+                    </nav>
+                </div>
+
+                <!-- Tab Content -->
+                <div class="p-6">
+                    <!-- Top Gainers Tab -->
+                    <div v-show="activeTab === 'gainers'">
+                        <div class="flex items-center justify-between mb-4">
+                            <h3 class="text-xl font-bold text-gray-800">涨幅榜 Top Gainers</h3>
+                            <select v-model="selectedDate" class="px-4 py-2 border border-gray-300 rounded-lg">
+                                <option v-for="date in availableDates" :key="date" :value="date">{{ formatDate(date) }}</option>
+                            </select>
+                        </div>
+                        <div v-if="loading" class="flex justify-center py-12">
+                            <div class="loading-spinner"></div>
+                        </div>
+                        <div v-else-if="topGainers.length === 0" class="text-center py-12 text-gray-500">
+                            <i class="fas fa-chart-line text-6xl mb-4 opacity-20"></i>
+                            <p>该日期暂无数据</p>
+                            <p class="text-sm mt-2">请选择其他日期或运行 python dump.py 更新数据</p>
+                        </div>
+                        <div v-show="!loading && topGainers.length > 0" class="chart-container" ref="gainersChart"></div>
+                    </div>
+
+                    <!-- Top Losers Tab -->
+                    <div v-show="activeTab === 'losers'">
+                        <div class="flex items-center justify-between mb-4">
+                            <h3 class="text-xl font-bold text-gray-800">跌幅榜 Top Losers</h3>
+                            <select v-model="selectedDate" class="px-4 py-2 border border-gray-300 rounded-lg">
+                                <option v-for="date in availableDates" :key="date" :value="date">{{ formatDate(date) }}</option>
+                            </select>
+                        </div>
+                        <div v-if="loading" class="flex justify-center py-12">
+                            <div class="loading-spinner"></div>
+                        </div>
+                        <div v-else-if="topLosers.length === 0" class="text-center py-12 text-gray-500">
+                            <i class="fas fa-chart-line text-6xl mb-4 opacity-20"></i>
+                            <p>该日期暂无数据</p>
+                            <p class="text-sm mt-2">请选择其他日期或运行 python dump.py 更新数据</p>
+                        </div>
+                        <div v-show="!loading && topLosers.length > 0" class="chart-container" ref="losersChart"></div>
+                    </div>
+
+                    <!-- Stock List Tab -->
+                    <div v-show="activeTab === 'stocks'">
+                        <div class="flex items-center justify-between mb-4">
+                            <h3 class="text-xl font-bold text-gray-800">股票列表 Stock List</h3>
+                        </div>
+                        
+                        <!-- Exchange Filter -->
+                        <div class="mb-4 bg-gray-50 rounded-lg p-4">
+                            <label class="block text-sm font-medium text-gray-700 mb-3">
+                                <i class="fas fa-building mr-2"></i>交易所筛选
+                            </label>
+                            <div class="flex gap-4">
+                                <label class="inline-flex items-center cursor-pointer">
+                                    <input 
+                                        type="checkbox" 
+                                        v-model="exchangeFilters.sh" 
+                                        @change="filterStocks"
+                                        class="w-4 h-4 text-purple-600 border-gray-300 rounded focus:ring-purple-500"
+                                    >
+                                    <span class="ml-2 text-sm text-gray-700">上证 (SH)</span>
+                                </label>
+                                <label class="inline-flex items-center cursor-pointer">
+                                    <input 
+                                        type="checkbox" 
+                                        v-model="exchangeFilters.sz" 
+                                        @change="filterStocks"
+                                        class="w-4 h-4 text-purple-600 border-gray-300 rounded focus:ring-purple-500"
+                                    >
+                                    <span class="ml-2 text-sm text-gray-700">深证 (SZ)</span>
+                                </label>
+                                <label class="inline-flex items-center cursor-pointer">
+                                    <input 
+                                        type="checkbox" 
+                                        v-model="exchangeFilters.bj" 
+                                        @change="filterStocks"
+                                        class="w-4 h-4 text-purple-600 border-gray-300 rounded focus:ring-purple-500"
+                                    >
+                                    <span class="ml-2 text-sm text-gray-700">北证 (BJ)</span>
+                                </label>
+                            </div>
+                        </div>
+                        
+                        <!-- Search Filter -->
+                        <div class="mb-4">
+                            <div class="relative">
+                                <input 
+                                    v-model="searchQuery" 
+                                    @input="filterStocks"
+                                    type="text" 
+                                    placeholder="搜索股票名称、代码或拼音..."
+                                    class="w-full px-4 py-3 pl-12 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                                >
+                                <i class="fas fa-search absolute left-4 top-4 text-gray-400"></i>
+                                <button 
+                                    v-if="searchQuery"
+                                    @click="clearSearch"
+                                    class="absolute right-4 top-4 text-gray-400 hover:text-gray-600"
+                                >
+                                    <i class="fas fa-times"></i>
+                                </button>
+                            </div>
+                            <p v-if="searchQuery || !allExchangesSelected" class="text-sm text-gray-500 mt-2">
+                                找到 {{ filteredStockList.length }} 个匹配结果
+                            </p>
+                        </div>
+                        
+                        <div v-if="loading" class="flex justify-center py-12">
+                            <div class="loading-spinner"></div>
+                        </div>
+                        <div v-else class="overflow-x-auto">
+                            <table class="min-w-full divide-y divide-gray-200">
+                                <thead class="bg-gray-50">
+                                    <tr>
+                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">代码</th>
+                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">名称</th>
+                                        <th @click="sortStocks('trade')" class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 select-none">
+                                            现价
+                                            <i v-if="stockSortBy === 'trade'" :class="stockSortOrder === 'desc' ? 'fa-sort-down' : 'fa-sort-up'" class="fas ml-1"></i>
+                                            <i v-else class="fas fa-sort ml-1 opacity-30"></i>
+                                        </th>
+                                        <th @click="sortStocks('changepercent')" class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 select-none">
+                                            涨跌幅
+                                            <i v-if="stockSortBy === 'changepercent'" :class="stockSortOrder === 'desc' ? 'fa-sort-down' : 'fa-sort-up'" class="fas ml-1"></i>
+                                            <i v-else class="fas fa-sort ml-1 opacity-30"></i>
+                                        </th>
+                                        <th @click="sortStocks('mktcap')" class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 select-none">
+                                            市值(亿)
+                                            <i v-if="stockSortBy === 'mktcap'" :class="stockSortOrder === 'desc' ? 'fa-sort-down' : 'fa-sort-up'" class="fas ml-1"></i>
+                                            <i v-else class="fas fa-sort ml-1 opacity-30"></i>
+                                        </th>
+                                        <th @click="sortStocks('turnoverratio')" class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 select-none">
+                                            换手率
+                                            <i v-if="stockSortBy === 'turnoverratio'" :class="stockSortOrder === 'desc' ? 'fa-sort-down' : 'fa-sort-up'" class="fas ml-1"></i>
+                                            <i v-else class="fas fa-sort ml-1 opacity-30"></i>
+                                        </th>
+                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">操作</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="bg-white divide-y divide-gray-200">
+                                    <tr v-for="stock in filteredStockList" :key="stock.symbol" class="hover:bg-gray-50 transition">
+                                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                                            <a :href="'history.html?code=' + stock.symbol" 
+                                               class="text-blue-600 hover:text-blue-800 hover:underline"
+                                               title="查看历史数据">
+                                                {{ stock.symbol }}
+                                            </a>
+                                        </td>
+                                        <td class="px-6 py-4 whitespace-nowrap text-sm">
+                                            <a :href="'history.html?code=' + stock.symbol" 
+                                               class="text-gray-900 hover:text-blue-600 hover:underline"
+                                               title="查看历史数据">
+                                                {{ stock.name }}
+                                            </a>
+                                        </td>
+                                        <td class="px-6 py-4 whitespace-nowrap text-sm text-right">
+                                            <span v-if="stock.trade" class="font-medium">¥{{ stock.trade.toFixed(2) }}</span>
+                                            <span v-else class="text-gray-400">-</span>
+                                        </td>
+                                        <td class="px-6 py-4 whitespace-nowrap text-sm text-right">
+                                            <span v-if="stock.changepercent !== null && stock.changepercent !== undefined" 
+                                                  :class="stock.changepercent >= 0 ? 'positive' : 'negative'" 
+                                                  class="font-semibold">
+                                                {{ stock.changepercent >= 0 ? '+' : '' }}{{ stock.changepercent.toFixed(2) }}%
+                                            </span>
+                                            <span v-else class="text-gray-400">-</span>
+                                        </td>
+                                        <td class="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-700">
+                                            <span v-if="stock.mktcap">{{ (stock.mktcap / 10000).toFixed(2) }}</span>
+                                            <span v-else class="text-gray-400">-</span>
+                                        </td>
+                                        <td class="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-700">
+                                            <span v-if="stock.turnoverratio">{{ stock.turnoverratio.toFixed(2) }}%</span>
+                                            <span v-else class="text-gray-400">-</span>
+                                        </td>
+                                        <td class="px-6 py-4 whitespace-nowrap text-sm">
+                                            <a :href="'history.html?code=' + stock.symbol" 
+                                               class="inline-flex items-center px-3 py-1 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-lg hover:shadow-lg transition text-xs"
+                                               title="查看历史数据">
+                                                <i class="fas fa-chart-line mr-1"></i>
+                                                历史数据
+                                            </a>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                            <div v-if="!searchQuery" class="flex justify-between items-center mt-4">
+                                <button 
+                                    @click="prevPage" 
+                                    :disabled="currentPage === 1"
+                                    class="px-4 py-2 bg-gray-200 rounded-lg hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    上一页
+                                </button>
+                                <span class="text-gray-600">第 {{ currentPage }} 页</span>
+                                <button 
+                                    @click="nextPage"
+                                    class="px-4 py-2 bg-gray-200 rounded-lg hover:bg-gray-300"
+                                >
+                                    下一页
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Analytics Tab -->
+                    <div v-show="activeTab === 'analytics'">
+                        <h3 class="text-xl font-bold text-gray-800 mb-4">数据分析 Data Analytics</h3>
+                        
+                        <!-- Filter Section -->
+                        <div class="bg-gradient-to-r from-purple-50 to-blue-50 rounded-lg p-6 mb-6">
+                            <h4 class="text-lg font-semibold text-gray-800 mb-4">
+                                <i class="fas fa-filter mr-2"></i>股票筛选器
+                            </h4>
+                            <div class="grid grid-cols-1 md:grid-cols-5 gap-4 mb-4">
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">时间范围</label>
+                                    <select v-model="filterDays" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500">
+                                        <option value="3">最近3天</option>
+                                        <option value="5">最近5天</option>
+                                        <option value="7">最近7天</option>
+                                        <option value="10">最近10天</option>
+                                        <option value="15">最近15天</option>
+                                        <option value="30">最近30天</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">最小涨幅 (%)</label>
+                                    <input v-model.number="filterMinChange" type="number" step="0.1" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500" placeholder="例如: 7">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">最大涨幅 (%)</label>
+                                    <input v-model.number="filterMaxChange" type="number" step="0.1" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500" placeholder="例如: 100">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">总市值 (≤ 亿)</label>
+                                    <input v-model.number="filterMaxMktcap" type="number" step="10" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500" placeholder="例如: 100">
+                                </div>
+                                <div class="flex items-end gap-2">
+                                    <button @click="applyFilter" class="flex-1 bg-gradient-to-r from-purple-600 to-blue-600 text-white px-6 py-2 rounded-lg hover:shadow-lg transition">
+                                        <i class="fas fa-search mr-2"></i>筛选
+                                    </button>
+                                    <button @click="clearFilter" class="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition">
+                                        <i class="fas fa-times"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            <p class="text-sm text-gray-600">
+                                <i class="fas fa-info-circle mr-1"></i>
+                                示例: 查找最近7天内有涨幅超过7%且总市值小于100亿的股票
+                            </p>
+                        </div>
+                        
+                        <!-- Filter Results -->
+                        <div v-if="filteredStocks.length > 0" class="mb-6">
+                            <div class="flex items-center justify-between mb-4">
+                                <h4 class="text-lg font-semibold text-gray-800">
+                                    筛选结果 ({{ displayedFilteredStocks.length }} / {{ filteredStocks.length }} 只股票)
+                                </h4>
+                            </div>
+                            
+                            <!-- Board Filter Checkboxes -->
+                            <div class="mb-4 bg-gray-50 rounded-lg p-4">
+                                <label class="block text-sm font-medium text-gray-700 mb-3">
+                                    <i class="fas fa-filter mr-2"></i>板块筛选
+                                </label>
+                                <div class="flex flex-wrap gap-4">
+                                    <label class="inline-flex items-center cursor-pointer">
+                                        <input 
+                                            type="checkbox" 
+                                            v-model="boardFilters.sh" 
+                                            class="w-4 h-4 text-purple-600 border-gray-300 rounded focus:ring-purple-500"
+                                        >
+                                        <span class="ml-2 text-sm text-gray-700">沪市主板 (600/601/603/605)</span>
+                                    </label>
+                                    <label class="inline-flex items-center cursor-pointer">
+                                        <input 
+                                            type="checkbox" 
+                                            v-model="boardFilters.star" 
+                                            class="w-4 h-4 text-purple-600 border-gray-300 rounded focus:ring-purple-500"
+                                        >
+                                        <span class="ml-2 text-sm text-gray-700">科创板 (688)</span>
+                                    </label>
+                                    <label class="inline-flex items-center cursor-pointer">
+                                        <input 
+                                            type="checkbox" 
+                                            v-model="boardFilters.szMain" 
+                                            class="w-4 h-4 text-purple-600 border-gray-300 rounded focus:ring-purple-500"
+                                        >
+                                        <span class="ml-2 text-sm text-gray-700">深主板 (000/001)</span>
+                                    </label>
+                                    <label class="inline-flex items-center cursor-pointer">
+                                        <input 
+                                            type="checkbox" 
+                                            v-model="boardFilters.sme" 
+                                            class="w-4 h-4 text-purple-600 border-gray-300 rounded focus:ring-purple-500"
+                                        >
+                                        <span class="ml-2 text-sm text-gray-700">中小板 (002/003)</span>
+                                    </label>
+                                    <label class="inline-flex items-center cursor-pointer">
+                                        <input 
+                                            type="checkbox" 
+                                            v-model="boardFilters.chinext" 
+                                            class="w-4 h-4 text-purple-600 border-gray-300 rounded focus:ring-purple-500"
+                                        >
+                                        <span class="ml-2 text-sm text-gray-700">创业板 (300/301)</span>
+                                    </label>
+                                    <label class="inline-flex items-center cursor-pointer">
+                                        <input 
+                                            type="checkbox" 
+                                            v-model="boardFilters.bj" 
+                                            class="w-4 h-4 text-purple-600 border-gray-300 rounded focus:ring-purple-500"
+                                        >
+                                        <span class="ml-2 text-sm text-gray-700">北证 (920/830/430)</span>
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="overflow-x-auto">
+                                <table class="min-w-full divide-y divide-gray-200">
+                                    <thead class="bg-gray-50">
+                                        <tr>
+                                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">代码</th>
+                                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">名称</th>
+                                            <th @click="sortFilteredStocks('max_change')" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100 select-none">
+                                                最大涨幅
+                                                <i v-if="filterSortBy === 'max_change'" :class="filterSortOrder === 'desc' ? 'fa-sort-down' : 'fa-sort-up'" class="fas ml-1"></i>
+                                                <i v-else class="fas fa-sort ml-1 opacity-30"></i>
+                                            </th>
+                                            <th @click="sortFilteredStocks('trigger_count')" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100 select-none">
+                                                触发日期
+                                                <i v-if="filterSortBy === 'trigger_count'" :class="filterSortOrder === 'desc' ? 'fa-sort-down' : 'fa-sort-up'" class="fas ml-1"></i>
+                                                <i v-else class="fas fa-sort ml-1 opacity-30"></i>
+                                            </th>
+                                            <th @click="sortFilteredStocks('latest_price')" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100 select-none">
+                                                最新价
+                                                <i v-if="filterSortBy === 'latest_price'" :class="filterSortOrder === 'desc' ? 'fa-sort-down' : 'fa-sort-up'" class="fas ml-1"></i>
+                                                <i v-else class="fas fa-sort ml-1 opacity-30"></i>
+                                            </th>
+                                            <th @click="sortFilteredStocks('mktcap')" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100 select-none">
+                                                总市值
+                                                <i v-if="filterSortBy === 'mktcap'" :class="filterSortOrder === 'desc' ? 'fa-sort-down' : 'fa-sort-up'" class="fas ml-1"></i>
+                                                <i v-else class="fas fa-sort ml-1 opacity-30"></i>
+                                            </th>
+                                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">操作</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="bg-white divide-y divide-gray-200">
+                                        <tr v-for="stock in displayedFilteredStocks" :key="stock.stock_code" class="hover:bg-gray-50 transition">
+                                            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                                                <a :href="'history.html?code=' + stock.stock_code" 
+                                                   class="text-blue-600 hover:text-blue-800 hover:underline">
+                                                    {{ stock.stock_code }}
+                                                </a>
+                                            </td>
+                                            <td class="px-6 py-4 text-sm" style="min-width: 120px; max-width: 200px;">
+                                                <a :href="'history.html?code=' + stock.stock_code" 
+                                                   class="text-gray-900 hover:text-blue-600 hover:underline block">
+                                                    {{ stock.stock_name }}
+                                                </a>
+                                            </td>
+                                            <td class="px-6 py-4 whitespace-nowrap text-sm">
+                                                <span :class="(stock.max_change_percent || 0) >= 0 ? 'positive' : 'negative'" class="font-semibold">
+                                                    {{ (stock.max_change_percent || 0) >= 0 ? '+' : '' }}{{ (stock.max_change_percent || 0).toFixed(2) }}%
+                                                </span>
+                                            </td>
+                                            <td class="px-6 py-4 text-sm text-gray-600" style="max-width: 200px;">
+                                                <div class="truncate" :title="formatTriggerDates(stock.trigger_dates)">
+                                                    {{ formatTriggerDates(stock.trigger_dates) }}
+                                                </div>
+                                            </td>
+                                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                                ¥{{ (stock.latest_price || 0).toFixed(2) }}
+                                            </td>
+                                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                                                {{ stock.mktcap && stock.mktcap > 0 ? (stock.mktcap / 10000).toFixed(2) + '亿' : '-' }}
+                                            </td>
+                                            <td class="px-6 py-4 whitespace-nowrap text-sm">
+                                                <div class="flex gap-2">
+                                                    <a :href="'https://basic.10jqka.com.cn/' + stock.stock_code" 
+                                                       target="_blank"
+                                                       class="inline-flex items-center px-3 py-1 bg-gradient-to-r from-orange-500 to-red-500 text-white rounded-lg hover:shadow-lg transition text-xs">
+                                                        <i class="fas fa-external-link-alt mr-1"></i>
+                                                        同花顺
+                                                    </a>
+                                                    <a :href="'https://xueqiu.com/S/' + getXueqiuSymbol(stock.stock_code)" 
+                                                       target="_blank"
+                                                       class="inline-flex items-center px-3 py-1 bg-gradient-to-r from-blue-500 to-cyan-500 text-white rounded-lg hover:shadow-lg transition text-xs">
+                                                        <i class="fas fa-external-link-alt mr-1"></i>
+                                                        雪球
+                                                    </a>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                        
+                        <div v-else-if="filterLoading" class="flex justify-center py-12">
+                            <div class="loading-spinner"></div>
+                        </div>
+                        
+                        <div v-else-if="filteredStocks.length === 0 && !filterLoading" class="text-center py-12 text-gray-500">
+                            <i class="fas fa-filter text-6xl mb-4 opacity-20"></i>
+                            <p>使用上方筛选器查找符合条件的股票</p>
+                        </div>
+                    </div>
+
+                    <!-- Strategy Scanner Tab -->
+                    <div v-show="activeTab === 'strategy'">
+                        <h3 class="text-xl font-bold text-gray-800 mb-4">
+                            <i class="fas fa-magic mr-2"></i>策略选股 Strategy Scanner
+                        </h3>
+                        
+                        <!-- Predefined Strategies -->
+                        <div class="mb-6">
+                            <h4 class="text-lg font-semibold text-gray-800 mb-3">预设策略</h4>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div v-for="strategy in predefinedStrategies" :key="strategy.id" 
+                                     @click="applyPredefinedStrategy(strategy)"
+                                     class="bg-gradient-to-br from-purple-50 to-blue-50 rounded-lg p-4 cursor-pointer hover:shadow-lg transition border-2 border-transparent hover:border-purple-400">
+                                    <div class="flex items-start justify-between">
+                                        <div class="flex-1">
+                                            <h5 class="font-semibold text-gray-800 mb-1">{{ strategy.name }}</h5>
+                                            <p class="text-sm text-gray-600">{{ strategy.description }}</p>
+                                        </div>
+                                        <i class="fas fa-play-circle text-2xl text-purple-600"></i>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Custom Strategy Parameters -->
+                        <div class="bg-gradient-to-r from-purple-50 to-blue-50 rounded-lg p-6 mb-6">
+                            <h4 class="text-lg font-semibold text-gray-800 mb-4">
+                                <i class="fas fa-sliders-h mr-2"></i>自定义策略参数
+                            </h4>
+                            <div class="grid grid-cols-1 md:grid-cols-6 gap-4 mb-4">
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">交易日期</label>
+                                    <select v-model="strategyDate" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500">
+                                        <option value="">最新交易日</option>
+                                        <option v-for="date in availableDates" :key="date" :value="date">{{ formatDate(date) }}</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">成交量倍数</label>
+                                    <input v-model.number="strategyVolumeMultiplier" type="number" step="0.1" min="1" 
+                                           class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500" 
+                                           placeholder="例如: 2.0">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">涨幅加速 (%)</label>
+                                    <input v-model.number="strategyMinChangeIncrease" type="number" step="0.1" 
+                                           class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500" 
+                                           placeholder="例如: 5.0">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">最小换手率 (%)</label>
+                                    <input v-model.number="strategyMinTurnover" type="number" step="0.1" 
+                                           class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500" 
+                                           placeholder="例如: 5.0">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">最大市值 (亿)</label>
+                                    <input v-model.number="strategyMaxMktcap" type="number" step="10" 
+                                           class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500" 
+                                           placeholder="0=不限">
+                                </div>
+                                <div class="flex items-end gap-2">
+                                    <button @click="runStrategyScanner" class="flex-1 bg-gradient-to-r from-purple-600 to-blue-600 text-white px-6 py-2 rounded-lg hover:shadow-lg transition">
+                                        <i class="fas fa-search mr-2"></i>扫描
+                                    </button>
+                                    <button @click="clearStrategy" class="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition">
+                                        <i class="fas fa-times"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="text-sm text-gray-600">
+                                <i class="fas fa-info-circle mr-1"></i>
+                                <strong>策略说明：</strong>
+                                <ul class="list-disc list-inside mt-2 space-y-1">
+                                    <li><strong>成交量倍数：</strong>当日成交量 ÷ 前一交易日成交量 ≥ 设定值</li>
+                                    <li><strong>涨幅加速：</strong>当日涨幅 - 前一交易日涨幅 ≥ 设定值</li>
+                                    <li><strong>换手率：</strong>当日换手率 ≥ 设定值（需要实时数据）</li>
+                                    <li><strong>市值限制：</strong>总市值 ≤ 设定值（0表示不限制）</li>
+                                </ul>
+                            </div>
+                        </div>
+                        
+                        <!-- Strategy Results -->
+                        <div v-if="strategyResults.length > 0" class="mb-6">
+                            <h4 class="text-lg font-semibold text-gray-800 mb-4">
+                                扫描结果 ({{ strategyResults.length }} 只股票)
+                                <span class="text-sm text-gray-600 ml-2">交易日: {{ formatDate(strategyDate) }}</span>
+                            </h4>
+                            <div class="overflow-x-auto">
+                                <table class="min-w-full divide-y divide-gray-200">
+                                    <thead class="bg-gray-50">
+                                        <tr>
+                                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">代码</th>
+                                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">名称</th>
+                                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">当日涨幅</th>
+                                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">前日涨幅</th>
+                                            <th @click="sortStrategyResults('change_acceleration')" 
+                                                class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100 transition">
+                                                涨幅加速
+                                                <i v-if="strategySortBy === 'change_acceleration'" 
+                                                   :class="strategySortOrder === 'desc' ? 'fas fa-sort-down' : 'fas fa-sort-up'" 
+                                                   class="ml-1"></i>
+                                                <i v-else class="fas fa-sort ml-1 opacity-30"></i>
+                                            </th>
+                                            <th @click="sortStrategyResults('volume_ratio')" 
+                                                class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100 transition">
+                                                成交量倍数
+                                                <i v-if="strategySortBy === 'volume_ratio'" 
+                                                   :class="strategySortOrder === 'desc' ? 'fas fa-sort-down' : 'fas fa-sort-up'" 
+                                                   class="ml-1"></i>
+                                                <i v-else class="fas fa-sort ml-1 opacity-30"></i>
+                                            </th>
+                                            <th @click="sortStrategyResults('turnover_ratio')" 
+                                                class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100 transition">
+                                                换手率
+                                                <i v-if="strategySortBy === 'turnover_ratio'" 
+                                                   :class="strategySortOrder === 'desc' ? 'fas fa-sort-down' : 'fas fa-sort-up'" 
+                                                   class="ml-1"></i>
+                                                <i v-else class="fas fa-sort ml-1 opacity-30"></i>
+                                            </th>
+                                            <th @click="sortStrategyResults('close')" 
+                                                class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100 transition">
+                                                收盘价
+                                                <i v-if="strategySortBy === 'close'" 
+                                                   :class="strategySortOrder === 'desc' ? 'fas fa-sort-down' : 'fas fa-sort-up'" 
+                                                   class="ml-1"></i>
+                                                <i v-else class="fas fa-sort ml-1 opacity-30"></i>
+                                            </th>
+                                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">总市值</th>
+                                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">操作</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="bg-white divide-y divide-gray-200">
+                                        <tr v-for="stock in sortedStrategyResults" :key="stock.stock_code" class="hover:bg-gray-50 transition">
+                                            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                                                <a :href="'history.html?code=' + stock.stock_code" 
+                                                   class="text-blue-600 hover:text-blue-800 hover:underline">
+                                                    {{ stock.stock_code }}
+                                                </a>
+                                            </td>
+                                            <td class="px-6 py-4 text-sm" style="min-width: 100px;">
+                                                <a :href="'history.html?code=' + stock.stock_code" 
+                                                   class="text-gray-900 hover:text-blue-600 hover:underline">
+                                                    {{ stock.stock_name }}
+                                                </a>
+                                            </td>
+                                            <td class="px-6 py-4 whitespace-nowrap text-sm">
+                                                <span :class="stock.change_percent >= 0 ? 'positive' : 'negative'" class="font-semibold">
+                                                    {{ stock.change_percent >= 0 ? '+' : '' }}{{ stock.change_percent.toFixed(2) }}%
+                                                </span>
+                                            </td>
+                                            <td class="px-6 py-4 whitespace-nowrap text-sm">
+                                                <span :class="stock.prev_change_percent >= 0 ? 'positive' : 'negative'">
+                                                    {{ stock.prev_change_percent >= 0 ? '+' : '' }}{{ stock.prev_change_percent.toFixed(2) }}%
+                                                </span>
+                                            </td>
+                                            <td class="px-6 py-4 whitespace-nowrap text-sm">
+                                                <span class="font-semibold text-purple-600">
+                                                    +{{ (stock.change_percent - stock.prev_change_percent).toFixed(2) }}%
+                                                </span>
+                                            </td>
+                                            <td class="px-6 py-4 whitespace-nowrap text-sm">
+                                                <span class="font-semibold text-blue-600">
+                                                    {{ stock.volume_ratio.toFixed(2) }}x
+                                                </span>
+                                            </td>
+                                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                                                {{ stock.turnover_ratio > 0 ? stock.turnover_ratio.toFixed(2) + '%' : '-' }}
+                                            </td>
+                                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                                ¥{{ stock.close.toFixed(2) }}
+                                            </td>
+                                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                                                {{ stock.mktcap && stock.mktcap > 0 ? (stock.mktcap / 10000).toFixed(2) + '亿' : '-' }}
+                                            </td>
+                                            <td class="px-6 py-4 whitespace-nowrap text-sm">
+                                                <div class="flex gap-2">
+                                                    <a :href="'https://basic.10jqka.com.cn/' + stock.stock_code" 
+                                                       target="_blank"
+                                                       class="inline-flex items-center px-3 py-1 bg-gradient-to-r from-orange-500 to-red-500 text-white rounded-lg hover:shadow-lg transition text-xs">
+                                                        <i class="fas fa-external-link-alt mr-1"></i>
+                                                        同花顺
+                                                    </a>
+                                                    <a :href="'https://xueqiu.com/S/' + getXueqiuSymbol(stock.stock_code)" 
+                                                       target="_blank"
+                                                       class="inline-flex items-center px-3 py-1 bg-gradient-to-r from-blue-500 to-cyan-500 text-white rounded-lg hover:shadow-lg transition text-xs">
+                                                        <i class="fas fa-external-link-alt mr-1"></i>
+                                                        雪球
+                                                    </a>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                        
+                        <div v-else-if="strategyLoading" class="flex justify-center py-12">
+                            <div class="loading-spinner"></div>
+                        </div>
+                        
+                        <div v-else class="text-center py-12 text-gray-500">
+                            <i class="fas fa-magic text-6xl mb-4 opacity-20"></i>
+                            <p>选择预设策略或自定义参数开始扫描</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <!-- Footer -->
+        <footer class="bg-white border-t border-gray-200 mt-12">
+            <div class="container mx-auto px-4 py-6 text-center text-gray-600">
+                <p>© 2025 股票数据分析平台 | Powered by Vue 3 + ECharts + Go</p>
+            </div>
+        </footer>
+    </div>
+
+    <script src="app.js?v=2.4"></script>
+</body>
+</html>

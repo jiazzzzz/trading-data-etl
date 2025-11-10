@@ -22,8 +22,92 @@ class StockInfo():
         self.logger.info("Last trading date is %s"%(ret))
         return ret
 	
-    #Below functions are getting data from tushare
+    #Below functions are getting data from TDX folder
+    def get_stock_list_from_tdx(self, tdx_folder='./tdx'):
+        """
+        Get stock list from TDX folder files.
+        TDX files are named like: SH#600000.txt, SZ#000001.txt, BJ#920000.txt
+        """
+        import os
+        import glob
+        
+        self.logger.info(f"Getting stock list from TDX folder: {tdx_folder}")
+        
+        stock_data = []
+        
+        # Get all txt files in tdx folder
+        pattern = os.path.join(tdx_folder, '*.txt')
+        files = glob.glob(pattern)
+        
+        self.logger.info(f"Found {len(files)} TDX files")
+        
+        for file_path in files:
+            try:
+                # Parse filename: SH#600000.txt -> exchange=SH, code=600000
+                filename = os.path.basename(file_path)
+                if '#' not in filename:
+                    continue
+                    
+                parts = filename.replace('.txt', '').split('#')
+                if len(parts) != 2:
+                    continue
+                    
+                exchange = parts[0].upper()  # SH, SZ, BJ
+                symbol = parts[1]  # 600000, 000001, etc.
+                
+                # Read first line to get stock name
+                with open(file_path, 'r', encoding='gbk', errors='ignore') as f:
+                    first_line = f.readline().strip()
+                    # First line format: "600000 浦发银行 日线 前复权" or "002181 粤 传 媒 日线 不复权"
+                    # Stock name may have spaces between characters
+                    line_parts = first_line.split()
+                    if len(line_parts) >= 2:
+                        # Find where "日线" appears to know where name ends
+                        if '日线' in line_parts:
+                            day_index = line_parts.index('日线')
+                            # Name is everything between code and "日线"
+                            name = ''.join(line_parts[1:day_index])
+                        else:
+                            # Fallback: take everything after code, remove spaces
+                            name = ''.join(line_parts[1:])
+                    else:
+                        name = symbol
+                
+                # Create ts_code format: 600000.SH, 000001.SZ, 920000.BJ
+                ts_code = f"{symbol}.{exchange}"
+                
+                stock_data.append({
+                    'ts_code': ts_code,
+                    'symbol': symbol,
+                    'name': name,
+                    'area': '',  # Not available in TDX files
+                    'industry': '',  # Not available in TDX files
+                    'list_date': ''  # Not available in TDX files
+                })
+                
+            except Exception as e:
+                self.logger.err(f"Error processing file {file_path}: {str(e)}")
+                continue
+        
+        self.logger.info(f"Successfully parsed {len(stock_data)} stocks from TDX files")
+        
+        # Convert to DataFrame
+        df = DataFrame(stock_data)
+        return df
+    
+    #Below functions are getting data from tushare (deprecated, use get_stock_list_from_tdx instead)
     def get_stock_list(self):
+        """
+        DEPRECATED: Use get_stock_list_from_tdx() instead.
+        This method requires tushare API which may not be available.
+        """
+        self.logger.warn("get_stock_list() is deprecated. Using get_stock_list_from_tdx() instead.")
+        return self.get_stock_list_from_tdx()
+        
+    def get_stock_list_from_tushare(self):
+        """
+        Get stock list from tushare API (requires API key).
+        """
         tushare_api_key = '85f02fe6125d57c0cb8b467121ce63620a59e2ccc419b3a3e0f7dad7'
         pro = ts.pro_api(tushare_api_key)
         stock_list = pro.stock_basic(exchange='', list_status='L', fields='ts_code,symbol,name,area,industry,list_date')

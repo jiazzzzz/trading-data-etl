@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stock Data Viewer</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+            background: #f5f5f5;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            padding: 30px;
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+        }
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+        }
+        .section {
+            margin-bottom: 30px;
+        }
+        .section h2 {
+            color: #444;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #007bff;
+        }
+        .controls {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+        input, select, button {
+            padding: 10px 15px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        input {
+            flex: 1;
+            min-width: 200px;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .results {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 15px;
+            max-height: 500px;
+            overflow: auto;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background: white;
+        }
+        th, td {
+            padding: 10px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+        th {
+            background: #007bff;
+            color: white;
+            position: sticky;
+            top: 0;
+        }
+        tr:hover {
+            background: #f5f5f5;
+        }
+        .positive {
+            color: #28a745;
+        }
+        .negative {
+            color: #dc3545;
+        }
+        .loading {
+            text-align: center;
+            padding: 20px;
+            color: #666;
+        }
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 15px;
+            border-radius: 4px;
+            border: 1px solid #f5c6cb;
+        }
+        .info {
+            background: #d1ecf1;
+            color: #0c5460;
+            padding: 10px 15px;
+            border-radius: 4px;
+            margin-bottom: 15px;
+        }
+        pre {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 4px;
+            overflow-x: auto;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📊 Stock Data Viewer</h1>
+        <p class="subtitle">Query your SQLite stock database via REST API</p>
+
+        <!-- Search Stocks -->
+        <div class="section">
+            <h2>🔍 Search Stocks</h2>
+            <div class="controls">
+                <input type="text" id="searchInput" placeholder="Search by name, symbol, or pinyin...">
+                <button onclick="searchStocks()">Search</button>
+            </div>
+            <div id="searchResults" class="results"></div>
+        </div>
+
+        <!-- Top Gainers -->
+        <div class="section">
+            <h2>📈 Top Gainers</h2>
+            <div class="controls">
+                <input type="text" id="dateInput" placeholder="Date (YYYYMMDD)" value="20251107">
+                <input type="number" id="topLimit" placeholder="Limit" value="10" min="1" max="100">
+                <button onclick="getTopGainers()">Get Top Gainers</button>
+            </div>
+            <div id="topGainersResults" class="results"></div>
+        </div>
+
+        <!-- Stock List -->
+        <div class="section">
+            <h2>📋 Stock List</h2>
+            <div class="controls">
+                <input type="number" id="stockLimit" placeholder="Limit" value="20" min="1" max="100">
+                <button onclick="getStocks()">Load Stocks</button>
+            </div>
+            <div id="stockResults" class="results"></div>
+        </div>
+
+        <!-- Custom Query -->
+        <div class="section">
+            <h2>⚡ Custom SQL Query</h2>
+            <div class="info">
+                Only SELECT queries are allowed. Example: SELECT * FROM stock_list WHERE area='上海' LIMIT 10
+            </div>
+            <div class="controls">
+                <input type="text" id="sqlInput" placeholder="SELECT * FROM stock_list LIMIT 10">
+                <button onclick="executeQuery()">Execute</button>
+            </div>
+            <div id="queryResults" class="results"></div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:8080/api';
+
+        function showLoading(elementId) {
+            document.getElementById(elementId).innerHTML = '<div class="loading">Loading...</div>';
+        }
+
+        function showError(elementId, message) {
+            document.getElementById(elementId).innerHTML = `<div class="error">Error: ${message}</div>`;
+        }
+
+        async function searchStocks() {
+            const query = document.getElementById('searchInput').value.trim();
+            if (!query) {
+                showError('searchResults', 'Please enter a search term');
+                return;
+            }
+
+            showLoading('searchResults');
+            try {
+                const response = await fetch(`${API_BASE}/search?q=${encodeURIComponent(query)}`);
+                const data = await response.json();
+
+                if (data.error) {
+                    showError('searchResults', data.error);
+                    return;
+                }
+
+                if (data.count === 0) {
+                    document.getElementById('searchResults').innerHTML = '<div class="info">No results found</div>';
+                    return;
+                }
+
+                let html = `<table>
+                    <thead>
+                        <tr>
+                            <th>Symbol</th>
+                            <th>Name</th>
+                            <th>Area</th>
+                            <th>Industry</th>
+                            <th>Pinyin</th>
+                        </tr>
+                    </thead>
+                    <tbody>`;
+
+                data.stocks.forEach(stock => {
+                    html += `<tr>
+                        <td>${stock.symbol}</td>
+                        <td>${stock.name}</td>
+                        <td>${stock.area}</td>
+                        <td>${stock.industry}</td>
+                        <td>${stock.pinyin}</td>
+                    </tr>`;
+                });
+
+                html += `</tbody></table>`;
+                document.getElementById('searchResults').innerHTML = html;
+            } catch (error) {
+                showError('searchResults', error.message);
+            }
+        }
+
+        async function getTopGainers() {
+            const date = document.getElementById('dateInput').value.trim();
+            const limit = document.getElementById('topLimit').value;
+
+            if (!date) {
+                showError('topGainersResults', 'Please enter a date');
+                return;
+            }
+
+            showLoading('topGainersResults');
+            try {
+                const response = await fetch(`${API_BASE}/daily/${date}/top?limit=${limit}`);
+                const data = await response.json();
+
+                if (data.error) {
+                    showError('topGainersResults', data.error);
+                    return;
+                }
+
+                let html = `<table>
+                    <thead>
+                        <tr>
+                            <th>Symbol</th>
+                            <th>Name</th>
+                            <th>Price</th>
+                            <th>Change</th>
+                            <th>Change %</th>
+                            <th>Volume</th>
+                        </tr>
+                    </thead>
+                    <tbody>`;
+
+                data.top_gainers.forEach(stock => {
+                    const changeClass = stock.changepercent >= 0 ? 'positive' : 'negative';
+                    html += `<tr>
+                        <td>${stock.symbol}</td>
+                        <td>${stock.name}</td>
+                        <td>${stock.trade.toFixed(2)}</td>
+                        <td class="${changeClass}">${stock.pricechange.toFixed(2)}</td>
+                        <td class="${changeClass}">${stock.changepercent.toFixed(2)}%</td>
+                        <td>${(stock.volume / 10000).toFixed(2)}万</td>
+                    </tr>`;
+                });
+
+                html += `</tbody></table>`;
+                document.getElementById('topGainersResults').innerHTML = html;
+            } catch (error) {
+                showError('topGainersResults', error.message);
+            }
+        }
+
+        async function getStocks() {
+            const limit = document.getElementById('stockLimit').value;
+
+            showLoading('stockResults');
+            try {
+                const response = await fetch(`${API_BASE}/stocks?limit=${limit}`);
+                const data = await response.json();
+
+                if (data.error) {
+                    showError('stockResults', data.error);
+                    return;
+                }
+
+                let html = `<div class="info">Total stocks: ${data.total}</div><table>
+                    <thead>
+                        <tr>
+                            <th>Symbol</th>
+                            <th>Name</th>
+                            <th>Area</th>
+                            <th>Industry</th>
+                            <th>List Date</th>
+                        </tr>
+                    </thead>
+                    <tbody>`;
+
+                data.stocks.forEach(stock => {
+                    html += `<tr>
+                        <td>${stock.symbol}</td>
+                        <td>${stock.name}</td>
+                        <td>${stock.area}</td>
+                        <td>${stock.industry}</td>
+                        <td>${stock.list_date}</td>
+                    </tr>`;
+                });
+
+                html += `</tbody></table>`;
+                document.getElementById('stockResults').innerHTML = html;
+            } catch (error) {
+                showError('stockResults', error.message);
+            }
+        }
+
+        async function executeQuery() {
+            const sql = document.getElementById('sqlInput').value.trim();
+            if (!sql) {
+                showError('queryResults', 'Please enter a SQL query');
+                return;
+            }
+
+            showLoading('queryResults');
+            try {
+                const response = await fetch(`${API_BASE}/query?sql=${encodeURIComponent(sql)}`);
+                const data = await response.json();
+
+                if (data.error) {
+                    showError('queryResults', data.error);
+                    return;
+                }
+
+                if (data.count === 0) {
+                    document.getElementById('queryResults').innerHTML = '<div class="info">No results</div>';
+                    return;
+                }
+
+                // Dynamic table based on results
+                const firstRow = data.results[0];
+                const columns = Object.keys(firstRow);
+
+                let html = `<table><thead><tr>`;
+                columns.forEach(col => {
+                    html += `<th>${col}</th>`;
+                });
+                html += `</tr></thead><tbody>`;
+
+                data.results.forEach(row => {
+                    html += `<tr>`;
+                    columns.forEach(col => {
+                        html += `<td>${row[col] !== null ? row[col] : 'NULL'}</td>`;
+                    });
+                    html += `</tr>`;
+                });
+
+                html += `</tbody></table>`;
+                document.getElementById('queryResults').innerHTML = html;
+            } catch (error) {
+                showError('queryResults', error.message);
+            }
+        }
+
+        // Allow Enter key to trigger search
+        document.getElementById('searchInput').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') searchStocks();
+        });
+
+        document.getElementById('sqlInput').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') executeQuery();
+        });
+    </script>
+</body>
+</html>
