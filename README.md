@@ -1,16 +1,27 @@
 # 📊 Stock Data Management System
 
-A complete Python + Go solution for collecting, storing, and querying Chinese stock market data.
+A complete Python + Go solution for collecting, storing, and querying Chinese stock market data from TDX and Sina Finance.
 
 ## 🎯 Features
 
-- ✅ **Data Collection** - Daily stock data from Tushare & Sina Finance
+- ✅ **TDX Historical Data Import** - Import historical stock data from TDX export files
+- ✅ **Sina Daily Data** - Fetch latest daily trading data from Sina Finance
 - ✅ **SQLite Storage** - Lightweight, file-based database
-- ✅ **Python Tools** - Data dumping and querying utilities
+- ✅ **Automated Updates** - Single script for daily routine updates
 - ✅ **REST API** - Go web server with Gin framework
-- ✅ **Web UI** - Interactive browser interface
+- ✅ **Web UI** - Interactive browser interface with charts
 - ✅ **Search** - By name, symbol, or pinyin
-- ✅ **Analytics** - Top gainers, custom queries
+- ✅ **Analytics** - Top gainers, historical data, custom queries
+
+## ⚡ Quick Reference
+
+**Daily routine:** `python daily_update.py`
+
+**Query data:** `python query_db.py`
+
+**Start web server:** `cd server && go run main.go`
+
+**Web UI:** Open `frontend/index.html` in browser
 
 ## 🚀 Quick Start
 
@@ -19,17 +30,20 @@ A complete Python + Go solution for collecting, storing, and querying Chinese st
 pip install -r requirements
 ```
 
-### 2. Dump Stock Data
+### 2. Prepare TDX Data
+Export your stock data from TDX software to the `./tdx` folder as `.txt` files.
+
+### 3. Run Daily Update
 ```bash
-# Full dump (stock list + daily data)
-python dump.py
-
-# Only stock list
-python dump.py --stock-list-only
-
-# Only daily data
-python dump.py --daily-only
+# Run this daily - imports TDX history + fetches Sina daily data
+python daily_update.py
 ```
+
+This single command:
+- ✅ Imports TDX historical data from `./tdx` folder
+- ✅ Updates stock list and names
+- ✅ Fetches latest daily trading data from Sina
+- ✅ Creates/updates SQLite database automatically
 
 ### 3. Query Data (Python)
 ```bash
@@ -58,48 +72,114 @@ Open `server/index.html` in your browser for an interactive interface.
 
 ```
 jia-stk/
-├── dump.py                 # Main data dumping script
+├── daily_update.py        # ⭐ Main daily routine script (TDX + Sina)
 ├── query_db.py            # Python query tool
-├── jia-stk.db             # SQLite database (created after first dump)
+├── jia-stk.db             # SQLite database (auto-created)
 ├── settings.conf          # Database configuration
 ├── requirements           # Python dependencies
 │
+├── tdx/                   # TDX export files (.txt)
+│   ├── SH#600000.txt     # Shanghai stocks
+│   ├── SZ#000001.txt     # Shenzhen stocks
+│   └── ...
+│
 ├── lib/                   # Python libraries
-│   ├── db.py             # MySQL database handler
 │   ├── db_sqlite.py      # SQLite database handler
-│   ├── stock_info.py     # Stock data fetching
+│   ├── stock_info.py     # Stock data fetching (Sina API)
 │   ├── logger.py         # Logging utility
-│   └── common.py         # Common utilities
+│   └── common.py         # Common utilities (pinyin, etc.)
 │
 ├── server/               # Go REST API server
 │   ├── main.go          # Server code
 │   ├── go.mod           # Go dependencies
-│   ├── index.html       # Simple web UI
-│   ├── README.md        # API documentation
-│   └── API_EXAMPLES.md  # Usage examples
+│   └── index.html       # Simple web UI
 │
-├── frontend/            # Modern Vue 3 dashboard ⭐ NEW!
+├── frontend/            # Modern Vue 3 dashboard
 │   ├── index.html      # Main application
 │   ├── app.js          # Vue 3 logic
-│   ├── README.md       # Frontend docs
-│   ├── QUICK_START.md  # Quick guide
-│   └── FEATURES.md     # Feature list
+│   └── history.html    # Historical data viewer
 │
-└── docs/               # Documentation
-    ├── QUICK_START.md
-    ├── README_DATABASE.md
-    ├── FRONTEND_GUIDE.md
-    └── SERVER_GUIDE.md
+├── cleanup_*.py         # Database maintenance scripts
+└── ARCHITECTURE.md      # System architecture docs
+```
+
+## 🔄 Data Workflow
+
+```
+┌─────────────────┐
+│  TDX Software   │  Export historical data
+│  (Export .txt)  │
+└────────┬────────┘
+         │
+         ▼
+    ┌────────┐
+    │  ./tdx │  TDX export files
+    └────┬───┘
+         │
+         ▼
+┌────────────────────┐
+│  daily_update.py   │  Daily routine script
+└────────┬───────────┘
+         │
+         ├──► Import TDX history → stock_history table
+         │
+         ├──► Update stock list → stock_list table
+         │
+         └──► Fetch Sina data → stock_daily_YYYYMMDD table
+                │
+                ▼
+         ┌──────────────┐
+         │  jia-stk.db  │  SQLite database
+         └──────┬───────┘
+                │
+      ┌─────────┼─────────┐
+      │                   │
+      ▼                   ▼
+┌─────────────┐    ┌─────────────┐
+│ query_db.py │    │ Go Server   │
+│  (Python)   │    │  (REST API) │
+└─────────────┘    └──────┬──────┘
+                          │
+                          ▼
+                   ┌──────────────┐
+                   │  Web UI      │
+                   │  (Frontend)  │
+                   └──────────────┘
 ```
 
 ## 📚 Documentation
 
-- **[QUICK_START.md](QUICK_START.md)** - Get started in 5 minutes
+- **[ARCHITECTURE.md](ARCHITECTURE.md)** - System architecture details
 - **[README_DATABASE.md](README_DATABASE.md)** - Database configuration
-- **[EXAMPLES.md](EXAMPLES.md)** - Query examples
-- **[SERVER_GUIDE.md](SERVER_GUIDE.md)** - Web server guide
-- **[server/README.md](server/README.md)** - Full API documentation
-- **[server/API_EXAMPLES.md](server/API_EXAMPLES.md)** - API usage examples
+- **[README_HISTORY.md](README_HISTORY.md)** - Historical data guide
+- **[README_STRATEGY_SCANNER.md](README_STRATEGY_SCANNER.md)** - Strategy scanner
+
+## 📥 TDX Data Preparation
+
+### Exporting from TDX Software
+
+1. Open TDX (通达信) software
+2. Select stocks you want to export
+3. Right-click → Export Data → Export to Text
+4. Save files to `./tdx` folder in your project
+5. Files should be named: `SH#600000.txt`, `SZ#000001.txt`, etc.
+
+### TDX File Format
+
+Each file contains:
+```
+600000 浦发银行
+日期       开盘    最高    最低    收盘    成交量    成交额
+2024/01/02  8.50   8.65   8.45   8.60   1234567   10500000.00
+2024/01/03  8.62   8.75   8.58   8.70   1345678   11200000.00
+...
+```
+
+The script automatically:
+- Parses stock code and name from header
+- Determines exchange (SH/SZ/BJ) from filename
+- Converts dates to YYYYMMDD format
+- Imports all historical records
 
 ## 🔧 Configuration
 
@@ -119,15 +199,30 @@ user = root
 passwd = your_password
 ```
 
-## 💻 Python Tools
+## 💻 Daily Routine
 
-### dump.py - Data Collection
+### daily_update.py - Your Daily Script ⭐
+
+Run this **every day** to keep your data up-to-date:
+
 ```bash
-python dump.py                    # Full dump
-python dump.py --stock-list-only  # Only stock list
-python dump.py --daily-only       # Only daily data
-python dump.py --date 20250108    # Specific date
-python dump.py --force            # Force overwrite
+# Full daily update (recommended)
+python daily_update.py
+```
+
+**What it does:**
+1. Imports TDX historical data from `./tdx` folder
+2. Updates stock list and names from TDX
+3. Fetches latest daily trading data from Sina Finance
+
+**Options:**
+```bash
+python daily_update.py --db jia-stk.db           # Specify database
+python daily_update.py --tdx-folder ./tdx        # Specify TDX folder
+python daily_update.py --skip-history            # Skip TDX import
+python daily_update.py --skip-daily              # Skip Sina daily data
+python daily_update.py --history-only            # Only import TDX
+python daily_update.py --daily-only              # Only fetch Sina data
 ```
 
 ### query_db.py - Data Query
@@ -196,21 +291,37 @@ python -m http.server 3000
 ## 📊 Database Schema
 
 ### stock_list
-- `ts_code` - Tushare code
-- `symbol` - Stock symbol
-- `name` - Stock name
+Stock list with pinyin support for search:
+- `ts_code` - Tushare code (e.g., "600000.SH")
+- `symbol` - Stock symbol (e.g., "600000")
+- `name` - Stock name (e.g., "浦发银行")
 - `area` - Location
 - `industry` - Industry sector
 - `list_date` - Listing date
-- `pinyin` - Pinyin for search
+- `pinyin` - Pinyin for search (e.g., "pfyh")
+
+### stock_history
+Historical OHLCV data imported from TDX:
+- `stock_code` - Stock code
+- `stock_name` - Stock name
+- `exchange` - Exchange (SH/SZ/BJ)
+- `trade_date` - Trading date (YYYYMMDD)
+- `open`, `high`, `low`, `close` - OHLC prices
+- `volume` - Trading volume
+- `amount` - Trading amount
+- `import_time` - Import timestamp
 
 ### stock_daily_YYYYMMDD
+Daily trading data from Sina (one table per date):
 - `symbol` - Stock symbol
 - `name` - Stock name
 - `trade` - Current price
 - `changepercent` - Change percentage
 - `volume` - Trading volume
 - `amount` - Trading amount
+- `open`, `high`, `low` - Daily OHLC
+- `per`, `pb` - P/E and P/B ratios
+- `mktcap` - Market capitalization
 - And more...
 
 ## 🔍 Common Queries
@@ -223,8 +334,14 @@ python query_db.py --sql "SELECT COUNT(*) FROM stock_list"
 # Find tech stocks
 python query_db.py --sql "SELECT * FROM stock_list WHERE industry LIKE '%科技%'"
 
-# Top gainers
-python query_db.py --sql "SELECT name, changepercent FROM stock_daily_20251107 ORDER BY changepercent DESC LIMIT 10"
+# Top gainers today
+python query_db.py --sql "SELECT name, changepercent FROM stock_daily_20251110 ORDER BY changepercent DESC LIMIT 10"
+
+# Historical data for a stock
+python query_db.py --sql "SELECT trade_date, close FROM stock_history WHERE stock_code='600000' ORDER BY trade_date DESC LIMIT 30"
+
+# Check latest import
+python query_db.py --sql "SELECT stock_code, MAX(trade_date) as latest FROM stock_history GROUP BY stock_code LIMIT 10"
 ```
 
 ### API
@@ -242,17 +359,29 @@ curl "http://localhost:8080/api/query?sql=SELECT%20*%20FROM%20stock_list%20WHERE
 ## 🤖 Automation
 
 ### Windows Task Scheduler
-Create a daily task:
-```
-Program: python
-Arguments: C:\work\jia-stk\dump.py
-Start in: C:\work\jia-stk
-```
+Create a daily task to run after market close:
+
+1. Open Task Scheduler
+2. Create Basic Task
+3. Set trigger: Daily at 4:00 PM (after market close)
+4. Action: Start a program
+   - Program: `python`
+   - Arguments: `C:\work\jia-stk\daily_update.py`
+   - Start in: `C:\work\jia-stk`
 
 ### Linux Cron
 ```bash
-# Run at 4 PM on weekdays
-0 16 * * 1-5 cd /path/to/jia-stk && python dump.py
+# Run at 4 PM on weekdays (after market close)
+0 16 * * 1-5 cd /path/to/jia-stk && python daily_update.py
+
+# Or run at 9 PM to ensure all data is available
+0 21 * * 1-5 cd /path/to/jia-stk && python daily_update.py
+```
+
+### Manual Run
+```bash
+# Just run this command daily
+python daily_update.py
 ```
 
 ## 🛠️ Development
@@ -262,9 +391,15 @@ Start in: C:\work\jia-stk
 # Install dependencies
 pip install -r requirements
 
-# Run tests
-python dump.py --help
+# Check help
+python daily_update.py --help
 python query_db.py --help
+
+# Test TDX import only
+python daily_update.py --history-only
+
+# Test Sina fetch only
+python daily_update.py --daily-only
 ```
 
 ### Go
@@ -307,14 +442,25 @@ go build -o stock-server main.go
 pip install -r requirements
 ```
 
+**TDX folder not found:**
+- Make sure `./tdx` folder exists
+- Export data from TDX software as `.txt` files
+- Files should be named like `SH#600000.txt`, `SZ#000001.txt`
+
 **Database not found:**
 ```bash
-python dump.py  # Create database first
+python daily_update.py  # Creates database automatically
 ```
 
-**Tushare API errors:**
-- Check your API key in `lib/stock_info.py`
+**No data in stock_history:**
+- Check if TDX files exist in `./tdx` folder
+- Run with `--history-only` to test TDX import
+- Check logs for parsing errors
+
+**Sina API errors:**
 - Verify network connection
+- Check if market is open (data available after market close)
+- Try again later if API is temporarily unavailable
 
 ### Go Server Issues
 
@@ -343,14 +489,41 @@ go mod download
 - Make sure running from `server/` directory
 - Or update path in `main.go`: `initDB("../jia-stk.db")`
 
+## ✨ Key Features Explained
+
+### Historical Data (TDX)
+- Import years of historical OHLCV data
+- Stored in `stock_history` table
+- Indexed by stock code and date for fast queries
+- Supports SH, SZ, and BJ exchanges
+
+### Daily Data (Sina)
+- Fresh daily trading data
+- Includes P/E, P/B ratios
+- Market cap and turnover
+- Separate table per date for easy management
+
+### Smart Search
+- Search by stock name (Chinese)
+- Search by stock code
+- Search by pinyin (e.g., "pfyh" finds "浦发银行")
+
+### Web Interface
+- Modern Vue 3 dashboard
+- ECharts visualizations
+- Historical data charts
+- Top gainers ranking
+- Industry distribution
+
 ## 📈 Future Enhancements
 
 - [ ] Real-time data streaming
 - [ ] Technical indicators calculation
-- [ ] Chart visualization
+- [ ] Advanced charting features
 - [ ] Email/SMS alerts
 - [ ] Portfolio tracking
 - [ ] Backtesting framework
+- [ ] Strategy scanner integration
 
 ## 📄 License
 
