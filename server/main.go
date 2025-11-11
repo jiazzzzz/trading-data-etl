@@ -260,6 +260,21 @@ func getStatsHandler(c *gin.Context) {
 func getStocksHandler(c *gin.Context) {
 	limit := c.DefaultQuery("limit", "10")
 	offset := c.DefaultQuery("offset", "0")
+	exchanges := c.Query("exchanges") // e.g., "SH,SZ" or "SH" or empty for all
+
+	// Build exchange filter
+	var exchangeFilter string
+	if exchanges != "" {
+		exchangeList := strings.Split(exchanges, ",")
+		var conditions []string
+		for _, ex := range exchangeList {
+			ex = strings.TrimSpace(strings.ToUpper(ex))
+			conditions = append(conditions, fmt.Sprintf("ts_code LIKE '%%.%s'", ex))
+		}
+		if len(conditions) > 0 {
+			exchangeFilter = " WHERE (" + strings.Join(conditions, " OR ") + ")"
+		}
+	}
 
 	// Get latest daily table
 	var latestTable string
@@ -269,7 +284,7 @@ func getStocksHandler(c *gin.Context) {
 	
 	if err != nil || latestTable == "" {
 		// No daily table found, return stocks without trading data
-		query := "SELECT ts_code, symbol, name, pinyin FROM stock_list LIMIT ? OFFSET ?"
+		query := "SELECT ts_code, symbol, name, pinyin FROM stock_list" + exchangeFilter + " LIMIT ? OFFSET ?"
 		rows, err := db.Query(query, limit, offset)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -301,8 +316,9 @@ func getStocksHandler(c *gin.Context) {
 				FROM %s
 				GROUP BY clean_symbol
 			) d ON sl.symbol = d.clean_symbol
+			%s
 			LIMIT ? OFFSET ?
-		`, latestTable)
+		`, latestTable, exchangeFilter)
 		
 		rows, err := db.Query(query, limit, offset)
 		if err != nil {

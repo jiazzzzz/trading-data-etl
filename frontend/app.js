@@ -70,6 +70,9 @@ createApp({
             strategyLoading: false,
             strategySortBy: 'volume_ratio',
             strategySortOrder: 'desc',
+            
+            // Sparkline cache (use object for Vue reactivity)
+            loadedSparklines: {},
             predefinedStrategies: [
                 {
                     id: 'volume_surge',
@@ -105,18 +108,23 @@ createApp({
     
     computed: {
         filteredStockList() {
-            let filtered = this.allStocks;
+            // Determine which data source to use
+            let source = this.searchQuery.trim() ? this.allStocks : this.stockList;
             
-            // Apply exchange filter first
-            filtered = filtered.filter(stock => {
-                const tsCode = (stock.ts_code || '').toUpperCase();
-                if (tsCode.endsWith('.SH') && this.exchangeFilters.sh) return true;
-                if (tsCode.endsWith('.SZ') && this.exchangeFilters.sz) return true;
-                if (tsCode.endsWith('.BJ') && this.exchangeFilters.bj) return true;
-                return false;
-            });
+            // If searching, apply client-side search filter
+            let filtered = source;
+            if (this.searchQuery.trim()) {
+                const query = this.searchQuery.toLowerCase();
+                filtered = source.filter(stock => {
+                    return (
+                        stock.symbol.toLowerCase().includes(query) ||
+                        stock.name.toLowerCase().includes(query) ||
+                        (stock.pinyin && stock.pinyin.toLowerCase().includes(query))
+                    );
+                });
+            }
             
-            // Apply search filter
+            // Apply search filter if searching
             if (this.searchQuery.trim()) {
                 const query = this.searchQuery.toLowerCase();
                 filtered = filtered.filter(stock => {
@@ -162,15 +170,7 @@ createApp({
                 });
             }
             
-            // If search query, return all filtered results
-            if (this.searchQuery.trim()) {
-                return filtered;
-            }
-            
-            // If no search query, apply pagination
-            const start = (this.currentPage - 1) * this.pageSize;
-            const end = start + this.pageSize;
-            return filtered.slice(start, end);
+            return filtered;
         },
         
         allExchangesSelected() {
@@ -448,13 +448,26 @@ createApp({
         async loadStockList() {
             this.loading = true;
             try {
-                // Load all stocks for filtering (only once)
-                if (this.allStocks.length === 0) {
-                    const response = await fetch(`${API_BASE}/stocks?limit=10000`);
+                // Build exchange filter parameter
+                const exchanges = [];
+                if (this.exchangeFilters.sh) exchanges.push('SH');
+                if (this.exchangeFilters.sz) exchanges.push('SZ');
+                if (this.exchangeFilters.bj) exchanges.push('BJ');
+                const exchangeParam = exchanges.length > 0 ? `&exchanges=${exchanges.join(',')}` : '';
+                
+                if (this.searchQuery.trim()) {
+                    // Load all stocks for client-side search filtering
+                    if (this.allStocks.length === 0) {
+                        const response = await fetch(`${API_BASE}/stocks?limit=10000${exchangeParam}`);
+                        const data = await response.json();
+                        this.allStocks = data.stocks || [];
+                    }
+                } else {
+                    // Load current page from server with exchange filter
+                    const offset = (this.currentPage - 1) * this.pageSize;
+                    const response = await fetch(`${API_BASE}/stocks?limit=${this.pageSize}&offset=${offset}${exchangeParam}`);
                     const data = await response.json();
-                    this.allStocks = data.stocks || [];
-                    console.log('Loaded stocks:', this.allStocks.length);
-                    console.log('Sample stock:', this.allStocks[0]);
+                    this.stockList = data.stocks || [];
                 }
             } catch (error) {
                 console.error('Error loading stock list:', error);
@@ -501,6 +514,8 @@ createApp({
                     if (this.filteredStocks.length === 0) {
                         this.showError('未找到符合条件的股票，请调整筛选条件');
                     }
+                    // Clear sparkline cache when new filter is applied
+                    this.loadedSparklines = {};
                 }
             } catch (error) {
                 console.error('Error filtering stocks:', error);
@@ -508,6 +523,119 @@ createApp({
                 this.filteredStocks = [];
             } finally {
                 this.filterLoading = false;
+            }
+        },
+        
+        loadSparklineOnHover(stockCode) {
+            console.log('loadSparklineOnHover called for:', stockCode);
+            console.log('loadedSparklines:', this.loadedSparklines);
+            
+            // Only load once per stock
+            if (this.loadedSparklines[stockCode]) {
+                console.log('Already loaded, skipping');
+                return;
+            }
+            
+            this.loadedSparklines[stockCode] = true;
+            console.log('Calling renderSparkline');
+            this.renderSparkline(stockCode);
+        },
+        
+        async renderSparkline(stockCode) {
+            try {
+                // Try to find container in either analytics or strategy tab
+                let container = document.getElementById(`sparkline-${stockCode}`);
+                if (!container) {
+                    container = document.getElementById(`sparkline-strategy-${stockCode}`);
+                }
+                if (!container) {
+                    return;
+                }
+                
+                // Show loading state
+                container.innerHTML = '<i class="fas fa-spinner fa-spin text-gray-400"></i>';
+                
+                // Fetch last 30 days of history
+                const response = await fetch(`${API_BASE}/history/${stockCode}?limit=30`);
+                if (!response.ok) {
+                    container.innerHTML = '<span style="color: #ef4444; font-size: 10px;">错误</span>';
+                    return;
+                }
+                
+                const result = await response.json();
+                
+                if (result.error) {
+                    container.innerHTML = '<span style="color: #ef4444; font-size: 10px;">错误</span>';
+                    return;
+                }
+                
+                if (!result.data || result.data.length === 0) {
+                    container.innerHTML = '<span style="color: #999; font-size: 10px;">无数据</span>';
+                    return;
+                }
+                
+                const history = result.data.reverse(); // Oldest to newest
+                const closes = history.map(h => h.close);
+                
+                // Check if echarts is available
+                if (typeof echarts === 'undefined') {
+                    container.innerHTML = '<span style="color: #ef4444; font-size: 10px;">错误</span>';
+                    return;
+                }
+                
+                // Clear container
+                container.innerHTML = '';
+                
+                // Initialize mini chart
+                const chart = echarts.init(container);
+                
+                // Determine color based on trend
+                const firstClose = closes[0];
+                const lastClose = closes[closes.length - 1];
+                const isPositive = lastClose >= firstClose;
+                const lineColor = isPositive ? '#10b981' : '#ef4444';
+                const areaColor = isPositive ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)';
+                
+                const option = {
+                    animation: false,
+                    grid: {
+                        left: 2,
+                        right: 2,
+                        top: 2,
+                        bottom: 2
+                    },
+                    xAxis: {
+                        type: 'category',
+                        data: closes.map((_, i) => i),
+                        show: false,
+                        boundaryGap: false
+                    },
+                    yAxis: {
+                        type: 'value',
+                        show: false,
+                        scale: true
+                    },
+                    series: [{
+                        type: 'line',
+                        data: closes,
+                        smooth: true,
+                        symbol: 'none',
+                        lineStyle: {
+                            color: lineColor,
+                            width: 1.5
+                        },
+                        areaStyle: {
+                            color: areaColor
+                        }
+                    }]
+                };
+                
+                chart.setOption(option);
+            } catch (error) {
+                const container = document.getElementById(`sparkline-${stockCode}`);
+                if (container) {
+                    container.innerHTML = '<span style="color: #ef4444; font-size: 10px;">错误</span>';
+                }
             }
         },
         
@@ -946,11 +1074,17 @@ createApp({
         
         nextPage() {
             this.currentPage++;
+            if (!this.searchQuery.trim()) {
+                this.loadStockList();
+            }
         },
         
         prevPage() {
             if (this.currentPage > 1) {
                 this.currentPage--;
+                if (!this.searchQuery.trim()) {
+                    this.loadStockList();
+                }
             }
         },
         
@@ -1030,6 +1164,29 @@ createApp({
             }
             // Update stats for the selected date
             this.loadStatsForDate(newDate);
+        },
+        
+        searchQuery(newQuery) {
+            // When user starts searching, load all stocks for client-side filtering
+            if (newQuery.trim() && this.allStocks.length === 0) {
+                this.loadStockList();
+            }
+            // Reset to page 1 when searching
+            if (newQuery.trim()) {
+                this.currentPage = 1;
+            }
+        },
+        
+        exchangeFilters: {
+            handler() {
+                // When exchange filters change, clear cache and reload
+                if (this.activeTab === 'stocks') {
+                    this.allStocks = []; // Clear cache to force reload with new filters
+                    this.currentPage = 1;
+                    this.loadStockList();
+                }
+            },
+            deep: true
         }
     }
 }).mount('#app');
