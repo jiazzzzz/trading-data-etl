@@ -13,10 +13,13 @@ createApp({
             availableDates: [],
             currentPage: 1,
             pageSize: 20,
-            exchangeFilters: {
-                sh: true,
-                sz: true,
-                bj: false
+            boardFiltersStock: {
+                shMain: true,    // 沪市主板
+                star: true,      // 科创板
+                szMain: true,    // 深主板
+                sme: true,       // 中小板
+                chinext: true,   // 创业板
+                bj: false        // 北证
             },
             stockSortBy: null,
             stockSortOrder: 'desc',
@@ -30,6 +33,7 @@ createApp({
             
             tabs: [
                 { id: 'stocks', name: '股票列表', icon: 'fas fa-list' },
+                { id: 'watchlist', name: '我的自选股', icon: 'fas fa-star' },
                 { id: 'gainers', name: '涨幅榜', icon: 'fas fa-arrow-up' },
                 { id: 'losers', name: '跌幅榜', icon: 'fas fa-arrow-down' },
                 { id: 'analytics', name: '数据分析', icon: 'fas fa-chart-pie' },
@@ -40,6 +44,8 @@ createApp({
             topLosers: [],
             stockList: [],
             allStocks: [],
+            watchlist: [],
+            watchlistCodes: [],
             industryData: {},
             
             // Filter parameters
@@ -73,6 +79,10 @@ createApp({
             
             // Sparkline cache (use object for Vue reactivity)
             loadedSparklines: {},
+            
+            // Toast notifications
+            toasts: [],
+            toastIdCounter: 0,
             predefinedStrategies: [
                 {
                     id: 'volume_surge',
@@ -111,8 +121,13 @@ createApp({
             // Determine which data source to use
             let source = this.searchQuery.trim() ? this.allStocks : this.stockList;
             
-            // If searching, apply client-side search filter
+            if (!source || source.length === 0) {
+                return [];
+            }
+            
+            // Backend already filtered by board, just apply search filter if needed
             let filtered = source;
+            
             if (this.searchQuery.trim()) {
                 const query = this.searchQuery.toLowerCase();
                 filtered = source.filter(stock => {
@@ -173,8 +188,10 @@ createApp({
             return filtered;
         },
         
-        allExchangesSelected() {
-            return this.exchangeFilters.sh && this.exchangeFilters.sz && this.exchangeFilters.bj;
+        allBoardsSelected() {
+            return this.boardFiltersStock.shMain && this.boardFiltersStock.star && 
+                   this.boardFiltersStock.szMain && this.boardFiltersStock.sme && 
+                   this.boardFiltersStock.chinext && this.boardFiltersStock.bj;
         },
         
         displayedFilteredStocks() {
@@ -285,6 +302,7 @@ createApp({
     },
     
     mounted() {
+        this.loadWatchlist();
         this.init();
     },
     
@@ -299,6 +317,122 @@ createApp({
                 this.selectedDate = this.availableDates[0];
                 await this.loadStatsForDate(this.selectedDate);
                 await this.loadTopGainers();
+            }
+        },
+        
+        loadWatchlist() {
+            // Load watchlist from localStorage
+            const saved = localStorage.getItem('stockWatchlist');
+            if (saved) {
+                try {
+                    this.watchlistCodes = JSON.parse(saved);
+                } catch (e) {
+                    this.watchlistCodes = [];
+                }
+            }
+        },
+        
+        saveWatchlist() {
+            // Save watchlist to localStorage
+            localStorage.setItem('stockWatchlist', JSON.stringify(this.watchlistCodes));
+        },
+        
+        addToWatchlist(stock) {
+            const code = stock.symbol || stock.stock_code;
+            if (!this.watchlistCodes.includes(code)) {
+                this.watchlistCodes.push(code);
+                this.saveWatchlist();
+                this.showSuccess(`已添加 ${stock.name || stock.stock_name} 到自选股`);
+            } else {
+                this.showError('该股票已在自选股中');
+            }
+        },
+        
+        removeFromWatchlist(code) {
+            const index = this.watchlistCodes.indexOf(code);
+            if (index > -1) {
+                this.watchlistCodes.splice(index, 1);
+                this.saveWatchlist();
+                this.loadWatchlistStocks();
+                this.showSuccess('已从自选股移除');
+            }
+        },
+        
+        isInWatchlist(stock) {
+            const code = stock.symbol || stock.stock_code;
+            return this.watchlistCodes.includes(code);
+        },
+        
+        async loadWatchlistStocks() {
+            if (this.watchlistCodes.length === 0) {
+                this.watchlist = [];
+                return;
+            }
+            
+            this.loading = true;
+            try {
+                // Build SQL to fetch watchlist stocks
+                const codes = this.watchlistCodes.map(c => `'${c}'`).join(',');
+                const sql = `SELECT ts_code, symbol, name, pinyin FROM stock_list WHERE symbol IN (${codes})`;
+                const response = await fetch(`${API_BASE}/query?sql=${encodeURIComponent(sql)}`);
+                const data = await response.json();
+                
+                if (data.results) {
+                    this.watchlist = data.results;
+                    
+                    // Try to get latest trading data
+                    const latestTableResponse = await fetch(`${API_BASE}/tables`);
+                    const tablesData = await latestTableResponse.json();
+                    
+                    if (tablesData.tables && tablesData.tables.length > 0) {
+                        const dailyTables = tablesData.tables.filter(t => t.name.startsWith('stock_daily_'));
+                        if (dailyTables.length > 0) {
+                            const latestTable = dailyTables[dailyTables.length - 1].name;
+                            
+                            // Fetch trading data for watchlist stocks
+                            for (let stock of this.watchlist) {
+                                try {
+                                    const tradeSql = `SELECT trade, changepercent, mktcap, turnoverratio FROM ${latestTable} WHERE REPLACE(REPLACE(REPLACE(symbol, 'sh', ''), 'sz', ''), 'bj', '') = '${stock.symbol}' LIMIT 1`;
+                                    const tradeResponse = await fetch(`${API_BASE}/query?sql=${encodeURIComponent(tradeSql)}`);
+                                    const tradeData = await tradeResponse.json();
+                                    
+                                    if (tradeData.results && tradeData.results.length > 0) {
+                                        Object.assign(stock, tradeData.results[0]);
+                                    }
+                                } catch (e) {
+                                    console.error('Error loading trade data for', stock.symbol, e);
+                                }
+                            }
+                        }
+                    }
+                }
+            } catch (error) {
+                console.error('Error loading watchlist:', error);
+                this.showError('加载自选股失败');
+            } finally {
+                this.loading = false;
+            }
+        },
+        
+        showSuccess(message) {
+            this.showToast(message, 'success');
+        },
+        
+        showToast(message, type = 'info') {
+            const id = this.toastIdCounter++;
+            const toast = { id, message, type };
+            this.toasts.push(toast);
+            
+            // Auto remove after 3 seconds
+            setTimeout(() => {
+                this.removeToast(id);
+            }, 3000);
+        },
+        
+        removeToast(id) {
+            const index = this.toasts.findIndex(t => t.id === id);
+            if (index > -1) {
+                this.toasts.splice(index, 1);
             }
         },
         
@@ -448,24 +582,27 @@ createApp({
         async loadStockList() {
             this.loading = true;
             try {
-                // Build exchange filter parameter
-                const exchanges = [];
-                if (this.exchangeFilters.sh) exchanges.push('SH');
-                if (this.exchangeFilters.sz) exchanges.push('SZ');
-                if (this.exchangeFilters.bj) exchanges.push('BJ');
-                const exchangeParam = exchanges.length > 0 ? `&exchanges=${exchanges.join(',')}` : '';
+                // Build board filter parameter (always send it)
+                const boards = [];
+                if (this.boardFiltersStock.shMain) boards.push('shMain');
+                if (this.boardFiltersStock.star) boards.push('star');
+                if (this.boardFiltersStock.szMain) boards.push('szMain');
+                if (this.boardFiltersStock.sme) boards.push('sme');
+                if (this.boardFiltersStock.chinext) boards.push('chinext');
+                if (this.boardFiltersStock.bj) boards.push('bj');
+                const boardParam = `&boards=${boards.join(',')}`;
                 
                 if (this.searchQuery.trim()) {
                     // Load all stocks for client-side search filtering
                     if (this.allStocks.length === 0) {
-                        const response = await fetch(`${API_BASE}/stocks?limit=10000${exchangeParam}`);
+                        const response = await fetch(`${API_BASE}/stocks?limit=10000${boardParam}`);
                         const data = await response.json();
                         this.allStocks = data.stocks || [];
                     }
                 } else {
-                    // Load current page from server with exchange filter
+                    // Load current page from server with board filter
                     const offset = (this.currentPage - 1) * this.pageSize;
-                    const response = await fetch(`${API_BASE}/stocks?limit=${this.pageSize}&offset=${offset}${exchangeParam}`);
+                    const response = await fetch(`${API_BASE}/stocks?limit=${this.pageSize}&offset=${offset}${boardParam}`);
                     const data = await response.json();
                     this.stockList = data.stocks || [];
                 }
@@ -1118,7 +1255,7 @@ createApp({
         },
         
         showError(message) {
-            alert(message);
+            this.showToast(message, 'error');
         }
     },
     
@@ -1144,6 +1281,8 @@ createApp({
                 });
             } else if (newTab === 'stocks' && this.stockList.length === 0) {
                 this.loadStockList();
+            } else if (newTab === 'watchlist') {
+                this.loadWatchlistStocks();
             } else if (newTab === 'analytics') {
                 this.$nextTick(() => {
                     if (Object.keys(this.industryData).length > 0) {
@@ -1177,9 +1316,9 @@ createApp({
             }
         },
         
-        exchangeFilters: {
+        boardFiltersStock: {
             handler() {
-                // When exchange filters change, clear cache and reload
+                // When board filters change, clear cache and reload
                 if (this.activeTab === 'stocks') {
                     this.allStocks = []; // Clear cache to force reload with new filters
                     this.currentPage = 1;

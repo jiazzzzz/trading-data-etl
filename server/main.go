@@ -260,20 +260,45 @@ func getStatsHandler(c *gin.Context) {
 func getStocksHandler(c *gin.Context) {
 	limit := c.DefaultQuery("limit", "10")
 	offset := c.DefaultQuery("offset", "0")
-	exchanges := c.Query("exchanges") // e.g., "SH,SZ" or "SH" or empty for all
+	boards := c.Query("boards") // e.g., "shMain,star,szMain,sme,chinext,bj"
 
-	// Build exchange filter
-	var exchangeFilter string
-	if exchanges != "" {
-		exchangeList := strings.Split(exchanges, ",")
-		var conditions []string
-		for _, ex := range exchangeList {
-			ex = strings.TrimSpace(strings.ToUpper(ex))
-			conditions = append(conditions, fmt.Sprintf("ts_code LIKE '%%.%s'", ex))
+	// Build board filter based on stock code patterns
+	var boardFilter string
+	boardList := strings.Split(boards, ",")
+	var conditions []string
+	
+	for _, board := range boardList {
+		board = strings.TrimSpace(board)
+		if board == "" {
+			continue
 		}
-		if len(conditions) > 0 {
-			exchangeFilter = " WHERE (" + strings.Join(conditions, " OR ") + ")"
+		switch board {
+		case "shMain":
+			// 沪市主板: 600, 601, 603, 605
+			conditions = append(conditions, "(symbol LIKE '600%' OR symbol LIKE '601%' OR symbol LIKE '603%' OR symbol LIKE '605%')")
+		case "star":
+			// 科创板: 688
+			conditions = append(conditions, "symbol LIKE '688%'")
+		case "szMain":
+			// 深主板: 000, 001
+			conditions = append(conditions, "(symbol LIKE '000%' OR symbol LIKE '001%')")
+		case "sme":
+			// 中小板: 002, 003
+			conditions = append(conditions, "(symbol LIKE '002%' OR symbol LIKE '003%')")
+		case "chinext":
+			// 创业板: 300, 301
+			conditions = append(conditions, "(symbol LIKE '300%' OR symbol LIKE '301%')")
+		case "bj":
+			// 北证: 430, 830, 920
+			conditions = append(conditions, "(symbol LIKE '430%' OR symbol LIKE '830%' OR symbol LIKE '920%')")
 		}
+	}
+	
+	if len(conditions) > 0 {
+		boardFilter = " WHERE (" + strings.Join(conditions, " OR ") + ")"
+	} else if boards != "" {
+		// If boards parameter is provided but no valid boards, return no results
+		boardFilter = " WHERE 1=0"
 	}
 
 	// Get latest daily table
@@ -284,7 +309,7 @@ func getStocksHandler(c *gin.Context) {
 	
 	if err != nil || latestTable == "" {
 		// No daily table found, return stocks without trading data
-		query := "SELECT ts_code, symbol, name, pinyin FROM stock_list" + exchangeFilter + " LIMIT ? OFFSET ?"
+		query := "SELECT ts_code, symbol, name, pinyin FROM stock_list" + boardFilter + " LIMIT ? OFFSET ?"
 		rows, err := db.Query(query, limit, offset)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -318,7 +343,7 @@ func getStocksHandler(c *gin.Context) {
 			) d ON sl.symbol = d.clean_symbol
 			%s
 			LIMIT ? OFFSET ?
-		`, latestTable, exchangeFilter)
+		`, latestTable, boardFilter)
 		
 		rows, err := db.Query(query, limit, offset)
 		if err != nil {
