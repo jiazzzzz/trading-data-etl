@@ -240,6 +240,37 @@
                             <h3 class="text-xl font-bold text-gray-800">股票列表 Stock List</h3>
                         </div>
                         
+                        <!-- Tag Filter -->
+                        <div v-if="allTags.length > 0" class="mb-4 bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg p-4">
+                            <label class="block text-sm font-medium text-gray-700 mb-3">
+                                <i class="fas fa-tags mr-2"></i>标签筛选
+                            </label>
+                            <div class="flex flex-wrap gap-2">
+                                <button 
+                                    v-for="tag in allTags" 
+                                    :key="tag.id"
+                                    @click="filterByTag(tag.id)"
+                                    :class="selectedTagFilters.includes(tag.id) ? 'ring-2 ring-offset-2 ring-blue-500' : ''"
+                                    class="inline-flex items-center px-3 py-1 rounded-full text-white text-xs font-medium hover:shadow-lg transition"
+                                    :style="{ backgroundColor: tag.color, borderColor: tag.color }"
+                                    :title="tag.description">
+                                    <i :class="selectedTagFilters.includes(tag.id) ? 'fas fa-check-circle' : 'fas fa-tag'" class="mr-1"></i>
+                                    {{ tag.name }}
+                                </button>
+                                <button 
+                                    v-if="selectedTagFilters.length > 0"
+                                    @click="clearTagFilter"
+                                    class="inline-flex items-center px-3 py-1 bg-gray-300 text-gray-700 rounded-full text-xs font-medium hover:bg-gray-400 transition">
+                                    <i class="fas fa-times mr-1"></i>
+                                    清除筛选
+                                </button>
+                            </div>
+                            <p v-if="selectedTagFilters.length > 0" class="text-sm text-gray-600 mt-2">
+                                <i class="fas fa-info-circle mr-1"></i>
+                                当前筛选: {{ selectedTagFilters.map(id => allTags.find(t => t.id === id)?.name).join(', ') }}
+                            </p>
+                        </div>
+
                         <!-- Exchange Filter -->
                         <div class="mb-4 bg-gray-50 rounded-lg p-4">
                             <label class="block text-sm font-medium text-gray-700 mb-3">
@@ -390,7 +421,7 @@
                                             <span v-else class="text-gray-400">-</span>
                                         </td>
                                         <td class="px-6 py-4 whitespace-nowrap text-sm">
-                                            <div class="flex gap-2">
+                                            <div class="flex gap-2 flex-wrap">
                                                 <button 
                                                     @click="addToWatchlist(stock)"
                                                     :disabled="isInWatchlist(stock)"
@@ -399,6 +430,22 @@
                                                     :title="isInWatchlist(stock) ? '已在自选股中' : '加入自选股'">
                                                     <i :class="isInWatchlist(stock) ? 'fas fa-star' : 'far fa-star'" class="mr-1"></i>
                                                     {{ isInWatchlist(stock) ? '已自选' : '自选' }}
+                                                </button>
+                                                <button 
+                                                    @click="addToWarninglist(stock)"
+                                                    :disabled="isInWarninglist(stock)"
+                                                    :class="isInWarninglist(stock) ? 'bg-gray-300 cursor-not-allowed' : 'bg-gradient-to-r from-red-500 to-pink-600 hover:shadow-lg'"
+                                                    class="inline-flex items-center px-3 py-1 text-white rounded-lg transition text-xs"
+                                                    :title="isInWarninglist(stock) ? '已在预警股中' : '加入预警股'">
+                                                    <i class="fas fa-exclamation-triangle mr-1"></i>
+                                                    {{ isInWarninglist(stock) ? '已预警' : '预警' }}
+                                                </button>
+                                                <button
+                                                    @click="openTagModal(stock)"
+                                                    class="inline-flex items-center px-3 py-1 bg-gradient-to-r from-green-600 to-teal-600 text-white rounded-lg hover:shadow-lg transition text-xs"
+                                                    title="管理标签">
+                                                    <i class="fas fa-tags mr-1"></i>
+                                                    添加标签
                                                 </button>
                                                 <a :href="'history.html?code=' + stock.symbol" 
                                                    class="inline-flex items-center px-3 py-1 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-lg hover:shadow-lg transition text-xs"
@@ -504,6 +551,110 @@
                                                     class="inline-flex items-center px-3 py-1 bg-gradient-to-r from-red-500 to-pink-500 text-white rounded-lg hover:shadow-lg transition text-xs"
                                                     title="移除自选">
                                                     <i class="fas fa-trash mr-1"></i>
+                                                    移除
+                                                </button>
+                                                <a :href="'history.html?code=' + stock.symbol" 
+                                                   class="inline-flex items-center px-3 py-1 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-lg hover:shadow-lg transition text-xs"
+                                                   title="查看历史数据">
+                                                    <i class="fas fa-chart-line mr-1"></i>
+                                                    历史数据
+                                                </a>
+                                                <a :href="'https://basic.10jqka.com.cn/' + stock.symbol" 
+                                                   target="_blank"
+                                                   class="inline-flex items-center px-3 py-1 bg-gradient-to-r from-orange-500 to-red-500 text-white rounded-lg hover:shadow-lg transition text-xs"
+                                                   title="在同花顺查看">
+                                                    <i class="fas fa-external-link-alt mr-1"></i>
+                                                    同花顺
+                                                </a>
+                                                <a :href="'https://xueqiu.com/S/' + getXueqiuSymbol(stock.symbol)" 
+                                                   target="_blank"
+                                                   class="inline-flex items-center px-3 py-1 bg-gradient-to-r from-blue-500 to-cyan-500 text-white rounded-lg hover:shadow-lg transition text-xs"
+                                                   title="在雪球查看">
+                                                    <i class="fas fa-external-link-alt mr-1"></i>
+                                                    雪球
+                                                </a>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Warning List Tab -->
+                    <div v-show="activeTab === 'warninglist'">
+                        <div class="flex justify-between items-center mb-4">
+                            <h3 class="text-xl font-bold text-gray-800">
+                                <i class="fas fa-exclamation-triangle mr-2 text-red-500"></i>问题/预警股
+                            </h3>
+                            <div class="text-sm text-gray-600">
+                                共 {{ warninglistCodes ? warninglistCodes.length : 0 }} 只股票
+                            </div>
+                        </div>
+
+                        <div v-if="!warninglistCodes || warninglistCodes.length === 0" class="text-center py-12">
+                            <i class="fas fa-exclamation-triangle text-gray-300 text-6xl mb-4"></i>
+                            <p class="text-gray-500 text-lg mb-2">还没有添加预警股</p>
+                            <p class="text-gray-400 text-sm">在股票列表中点击"预警"按钮添加有财务问题的股票</p>
+                        </div>
+
+                        <div v-else class="bg-white rounded-lg shadow overflow-hidden">
+                            <div v-if="loading" class="flex justify-center py-12">
+                                <div class="loading-spinner"></div>
+                            </div>
+                            <table v-else class="min-w-full divide-y divide-gray-200">
+                                <thead class="bg-red-50">
+                                    <tr>
+                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">代码</th>
+                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">名称</th>
+                                        <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">现价</th>
+                                        <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">涨跌幅</th>
+                                        <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">总市值(亿)</th>
+                                        <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">换手率</th>
+                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">操作</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="bg-white divide-y divide-gray-200">
+                                    <tr v-for="stock in warninglist" :key="stock.symbol" class="hover:bg-red-50 transition">
+                                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                                            <a :href="'history.html?code=' + stock.symbol" 
+                                               class="text-blue-600 hover:text-blue-800 hover:underline">
+                                                {{ stock.symbol }}
+                                            </a>
+                                        </td>
+                                        <td class="px-6 py-4 whitespace-nowrap text-sm">
+                                            <a :href="'history.html?code=' + stock.symbol" 
+                                               class="text-gray-900 hover:text-blue-600 hover:underline">
+                                                {{ stock.name }}
+                                            </a>
+                                        </td>
+                                        <td class="px-6 py-4 whitespace-nowrap text-sm text-right">
+                                            <span v-if="stock.trade" class="font-medium">¥{{ stock.trade.toFixed(2) }}</span>
+                                            <span v-else class="text-gray-400">-</span>
+                                        </td>
+                                        <td class="px-6 py-4 whitespace-nowrap text-sm text-right">
+                                            <span v-if="stock.changepercent !== null && stock.changepercent !== undefined" 
+                                                  :class="stock.changepercent >= 0 ? 'positive' : 'negative'" 
+                                                  class="font-semibold">
+                                                {{ stock.changepercent >= 0 ? '+' : '' }}{{ stock.changepercent.toFixed(2) }}%
+                                            </span>
+                                            <span v-else class="text-gray-400">-</span>
+                                        </td>
+                                        <td class="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-700">
+                                            <span v-if="stock.mktcap">{{ (stock.mktcap / 10000).toFixed(2) }}</span>
+                                            <span v-else class="text-gray-400">-</span>
+                                        </td>
+                                        <td class="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-700">
+                                            <span v-if="stock.turnoverratio">{{ stock.turnoverratio.toFixed(2) }}%</span>
+                                            <span v-else class="text-gray-400">-</span>
+                                        </td>
+                                        <td class="px-6 py-4 whitespace-nowrap text-sm">
+                                            <div class="flex gap-2 flex-wrap">
+                                                <button 
+                                                    @click="removeFromWarninglist(stock.symbol)"
+                                                    class="inline-flex items-center px-3 py-1 bg-gradient-to-r from-green-500 to-teal-500 text-white rounded-lg hover:shadow-lg transition text-xs"
+                                                    title="移除预警">
+                                                    <i class="fas fa-check mr-1"></i>
                                                     移除
                                                 </button>
                                                 <a :href="'history.html?code=' + stock.symbol" 
@@ -679,14 +830,19 @@
                                     <tbody class="bg-white divide-y divide-gray-200">
                                         <tr v-for="stock in displayedFilteredStocks" :key="stock.stock_code" class="hover:bg-gray-50 transition">
                                             <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                                                <a :href="'history.html?code=' + stock.stock_code" 
-                                                   class="text-blue-600 hover:text-blue-800 hover:underline">
-                                                    {{ stock.stock_code }}
-                                                </a>
+                                                <div class="flex items-center gap-2">
+                                                    <a :href="'history.html?code=' + stock.stock_code" 
+                                                       class="text-blue-600 hover:text-blue-800 hover:underline">
+                                                        {{ stock.stock_code }}
+                                                    </a>
+                                                    <i v-if="warninglistCodes && warninglistCodes.includes(stock.stock_code)" 
+                                                       class="fas fa-exclamation-triangle text-red-500" 
+                                                       title="该股票在预警列表中"></i>
+                                                </div>
                                             </td>
-                                            <td class="px-6 py-4 text-sm" style="min-width: 120px; max-width: 200px;">
+                                            <td class="px-6 py-4 text-sm" style="min-width: 120px;">
                                                 <a :href="'history.html?code=' + stock.stock_code" 
-                                                   class="text-gray-900 hover:text-blue-600 hover:underline block">
+                                                   class="text-gray-900 hover:text-blue-600 hover:underline">
                                                     {{ stock.stock_name }}
                                                 </a>
                                             </td>
@@ -887,10 +1043,15 @@
                                     <tbody class="bg-white divide-y divide-gray-200">
                                         <tr v-for="stock in sortedStrategyResults" :key="stock.stock_code" class="hover:bg-gray-50 transition">
                                             <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                                                <a :href="'history.html?code=' + stock.stock_code" 
-                                                   class="text-blue-600 hover:text-blue-800 hover:underline">
-                                                    {{ stock.stock_code }}
-                                                </a>
+                                                <div class="flex items-center gap-2">
+                                                    <a :href="'history.html?code=' + stock.stock_code" 
+                                                       class="text-blue-600 hover:text-blue-800 hover:underline">
+                                                        {{ stock.stock_code }}
+                                                    </a>
+                                                    <i v-if="warninglistCodes && warninglistCodes.includes(stock.stock_code)" 
+                                                       class="fas fa-exclamation-triangle text-red-500" 
+                                                       title="该股票在预警列表中"></i>
+                                                </div>
                                             </td>
                                             <td class="px-6 py-4 text-sm" style="min-width: 100px;">
                                                 <a :href="'history.html?code=' + stock.stock_code" 
@@ -1007,6 +1168,86 @@
                     </button>
                 </div>
             </transition-group>
+        </div>
+
+        <!-- Tag Management Modal -->
+        <div v-if="showTagModal" 
+             class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+             @click.self="closeTagModal">
+            <div class="bg-white rounded-lg shadow-xl max-w-md w-full mx-4 max-h-[80vh] overflow-y-auto">
+                <div class="p-6">
+                    <div class="flex justify-between items-center mb-4">
+                        <h3 class="text-xl font-bold text-gray-800">
+                            <i class="fas fa-tags mr-2"></i>
+                            管理标签: {{ currentStockForTag?.name }} ({{ currentStockForTag?.symbol }})
+                        </h3>
+                        <button @click="closeTagModal" class="text-gray-500 hover:text-gray-700">
+                            <i class="fas fa-times text-xl"></i>
+                        </button>
+                    </div>
+
+                    <!-- Current Tags -->
+                    <div class="mb-6">
+                        <h4 class="text-sm font-semibold text-gray-700 mb-2">当前标签:</h4>
+                        <div v-if="stockTags.length > 0" class="flex flex-wrap gap-2">
+                            <div v-for="tag in stockTags" 
+                                 :key="tag.id"
+                                 class="inline-flex items-center px-3 py-1 rounded-full text-white text-sm"
+                                 :style="{ backgroundColor: tag.tag_color }">
+                                <span>{{ tag.tag_name }}</span>
+                                <button @click="removeTagFromStock(tag.tag_id)" 
+                                        class="ml-2 hover:bg-white hover:bg-opacity-20 rounded-full p-1">
+                                    <i class="fas fa-times text-xs"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <p v-else class="text-gray-500 text-sm">暂无标签</p>
+                    </div>
+
+                    <!-- Add Existing Tag -->
+                    <div class="mb-6">
+                        <h4 class="text-sm font-semibold text-gray-700 mb-2">添加已有标签:</h4>
+                        <div class="flex flex-wrap gap-2 max-h-40 overflow-y-auto">
+                            <button v-for="tag in allTags.filter(t => !stockTags.some(st => st.tag_id === t.id))" 
+                                    :key="tag.id"
+                                    @click="addTagToStock(tag.id)"
+                                    class="inline-flex items-center px-3 py-1 rounded-full text-white text-sm hover:shadow-lg transition"
+                                    :style="{ backgroundColor: tag.color }">
+                                <i class="fas fa-plus mr-1"></i>
+                                {{ tag.name }}
+                            </button>
+                            <p v-if="allTags.filter(t => !stockTags.some(st => st.tag_id === t.id)).length === 0" 
+                               class="text-gray-500 text-sm">
+                                所有标签已添加
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- Create New Tag -->
+                    <div class="border-t pt-4">
+                        <h4 class="text-sm font-semibold text-gray-700 mb-2">创建新标签:</h4>
+                        <div class="flex gap-2 mb-2">
+                            <input 
+                                v-model="newTagName"
+                                @keyup.enter="createAndAddTag"
+                                type="text" 
+                                placeholder="输入标签名称"
+                                class="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm">
+                            <input 
+                                v-model="newTagColor"
+                                type="color" 
+                                class="w-12 h-10 border border-gray-300 rounded-lg cursor-pointer">
+                        </div>
+                        <button 
+                            @click="createAndAddTag"
+                            :disabled="!newTagName.trim()"
+                            class="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition text-sm">
+                            <i class="fas fa-plus mr-1"></i>
+                            创建并添加
+                        </button>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 

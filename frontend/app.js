@@ -34,6 +34,7 @@ createApp({
             tabs: [
                 { id: 'stocks', name: '股票列表', icon: 'fas fa-list' },
                 { id: 'watchlist', name: '我的自选股', icon: 'fas fa-star' },
+                { id: 'warninglist', name: '问题/预警股', icon: 'fas fa-exclamation-triangle' },
                 { id: 'gainers', name: '涨幅榜', icon: 'fas fa-arrow-up' },
                 { id: 'losers', name: '跌幅榜', icon: 'fas fa-arrow-down' },
                 { id: 'analytics', name: '数据分析', icon: 'fas fa-chart-pie' },
@@ -46,7 +47,18 @@ createApp({
             allStocks: [],
             watchlist: [],
             watchlistCodes: [],
+            warninglist: [],
+            warninglistCodes: [],
+            allTags: [],
+            selectedTagFilters: [], // Changed to array for multi-select
             industryData: {},
+            
+            // Tag management for stock
+            showTagModal: false,
+            currentStockForTag: null,
+            stockTags: [],
+            newTagName: '',
+            newTagColor: '#3B82F6',
             
             // Filter parameters
             filterDays: 7,
@@ -118,6 +130,11 @@ createApp({
     
     computed: {
         filteredStockList() {
+            // If filtering by tag, use allStocks
+            if (this.selectedTagFilters.length > 0) {
+                return this.allStocks;
+            }
+            
             // Determine which data source to use
             let source = this.searchQuery.trim() ? this.allStocks : this.stockList;
             
@@ -310,6 +327,7 @@ createApp({
         async init() {
             await this.loadTables();
             await this.loadStats();
+            await this.loadTags();
             await this.loadStockList();
             await this.loadIndustryData();
             
@@ -317,6 +335,16 @@ createApp({
                 this.selectedDate = this.availableDates[0];
                 await this.loadStatsForDate(this.selectedDate);
                 await this.loadTopGainers();
+            }
+        },
+        
+        async loadTags() {
+            try {
+                const response = await fetch(`${API_BASE}/tags`);
+                const data = await response.json();
+                this.allTags = data.tags || [];
+            } catch (error) {
+                console.error('Error loading tags:', error);
             }
         },
         
@@ -330,11 +358,26 @@ createApp({
                     this.watchlistCodes = [];
                 }
             }
+            
+            // Load warninglist from localStorage
+            const savedWarning = localStorage.getItem('stockWarninglist');
+            if (savedWarning) {
+                try {
+                    this.warninglistCodes = JSON.parse(savedWarning);
+                } catch (e) {
+                    this.warninglistCodes = [];
+                }
+            }
         },
         
         saveWatchlist() {
             // Save watchlist to localStorage
             localStorage.setItem('stockWatchlist', JSON.stringify(this.watchlistCodes));
+        },
+        
+        saveWarninglist() {
+            // Save warninglist to localStorage
+            localStorage.setItem('stockWarninglist', JSON.stringify(this.warninglistCodes));
         },
         
         addToWatchlist(stock) {
@@ -361,6 +404,32 @@ createApp({
         isInWatchlist(stock) {
             const code = stock.symbol || stock.stock_code;
             return this.watchlistCodes.includes(code);
+        },
+        
+        addToWarninglist(stock) {
+            const code = stock.symbol || stock.stock_code;
+            if (!this.warninglistCodes.includes(code)) {
+                this.warninglistCodes.push(code);
+                this.saveWarninglist();
+                this.showSuccess(`已添加 ${stock.name || stock.stock_name} 到预警股`);
+            } else {
+                this.showError('该股票已在预警股中');
+            }
+        },
+        
+        removeFromWarninglist(code) {
+            const index = this.warninglistCodes.indexOf(code);
+            if (index > -1) {
+                this.warninglistCodes.splice(index, 1);
+                this.saveWarninglist();
+                this.loadWarninglistStocks();
+                this.showSuccess('已从预警股移除');
+            }
+        },
+        
+        isInWarninglist(stock) {
+            const code = stock.symbol || stock.stock_code;
+            return this.warninglistCodes.includes(code);
         },
         
         async loadWatchlistStocks() {
@@ -409,6 +478,57 @@ createApp({
             } catch (error) {
                 console.error('Error loading watchlist:', error);
                 this.showError('加载自选股失败');
+            } finally {
+                this.loading = false;
+            }
+        },
+        
+        async loadWarninglistStocks() {
+            if (this.warninglistCodes.length === 0) {
+                this.warninglist = [];
+                return;
+            }
+            
+            this.loading = true;
+            try {
+                // Build SQL to fetch warninglist stocks
+                const codes = this.warninglistCodes.map(c => `'${c}'`).join(',');
+                const sql = `SELECT ts_code, symbol, name, pinyin FROM stock_list WHERE symbol IN (${codes})`;
+                const response = await fetch(`${API_BASE}/query?sql=${encodeURIComponent(sql)}`);
+                const data = await response.json();
+                
+                if (data.results) {
+                    this.warninglist = data.results;
+                    
+                    // Try to get latest trading data
+                    const latestTableResponse = await fetch(`${API_BASE}/tables`);
+                    const tablesData = await latestTableResponse.json();
+                    
+                    if (tablesData.tables && tablesData.tables.length > 0) {
+                        const dailyTables = tablesData.tables.filter(t => t.name.startsWith('stock_daily_'));
+                        if (dailyTables.length > 0) {
+                            const latestTable = dailyTables[dailyTables.length - 1].name;
+                            
+                            // Fetch trading data for warninglist stocks
+                            for (let stock of this.warninglist) {
+                                try {
+                                    const tradeSql = `SELECT trade, changepercent, mktcap, turnoverratio FROM ${latestTable} WHERE REPLACE(REPLACE(REPLACE(symbol, 'sh', ''), 'sz', ''), 'bj', '') = '${stock.symbol}' LIMIT 1`;
+                                    const tradeResponse = await fetch(`${API_BASE}/query?sql=${encodeURIComponent(tradeSql)}`);
+                                    const tradeData = await tradeResponse.json();
+                                    
+                                    if (tradeData.results && tradeData.results.length > 0) {
+                                        Object.assign(stock, tradeData.results[0]);
+                                    }
+                                } catch (e) {
+                                    console.error('Error loading trade data for', stock.symbol, e);
+                                }
+                            }
+                        }
+                    }
+                }
+            } catch (error) {
+                console.error('Error loading warninglist:', error);
+                this.showError('加载预警股失败');
             } finally {
                 this.loading = false;
             }
@@ -582,6 +702,25 @@ createApp({
         async loadStockList() {
             this.loading = true;
             try {
+                // If filtering by multiple tags, load stocks that have ANY of the selected tags
+                if (this.selectedTagFilters.length > 0) {
+                    // Fetch stocks for each tag and merge results (OR logic)
+                    const stocksMap = new Map();
+                    for (const tagId of this.selectedTagFilters) {
+                        const response = await fetch(`${API_BASE}/tags/${tagId}/stocks?limit=10000`);
+                        if (!response.ok) continue;
+                        const data = await response.json();
+                        const stocks = data.stocks || [];
+                        stocks.forEach(stock => {
+                            stocksMap.set(stock.symbol, stock);
+                        });
+                    }
+                    this.allStocks = Array.from(stocksMap.values());
+                    this.stockList = [];
+                    this.loading = false;
+                    return;
+                }
+                
                 // Build board filter parameter (always send it)
                 const boards = [];
                 if (this.boardFiltersStock.shMain) boards.push('shMain');
@@ -611,6 +750,129 @@ createApp({
                 this.showError('加载股票列表失败');
             } finally {
                 this.loading = false;
+            }
+        },
+        
+        filterByTag(tagId) {
+            // Toggle tag selection
+            const index = this.selectedTagFilters.indexOf(tagId);
+            if (index > -1) {
+                this.selectedTagFilters.splice(index, 1);
+            } else {
+                this.selectedTagFilters.push(tagId);
+            }
+            this.searchQuery = '';
+            this.currentPage = 1;
+            this.loadStockList();
+        },
+        
+        clearTagFilter() {
+            this.selectedTagFilters = [];
+            this.allStocks = [];
+            this.currentPage = 1;
+            this.loadStockList();
+        },
+        
+        // Tag management for individual stocks
+        async openTagModal(stock) {
+            this.currentStockForTag = stock;
+            this.showTagModal = true;
+            this.newTagName = '';
+            await this.loadStockTags(stock.symbol);
+        },
+        
+        closeTagModal() {
+            this.showTagModal = false;
+            this.currentStockForTag = null;
+            this.stockTags = [];
+            this.newTagName = '';
+        },
+        
+        async loadStockTags(stockCode) {
+            try {
+                const response = await fetch(`${API_BASE}/stock-tags/${stockCode}`);
+                const data = await response.json();
+                this.stockTags = data.tags || [];
+            } catch (error) {
+                console.error('Failed to load stock tags:', error);
+                this.stockTags = [];
+            }
+        },
+        
+        async addTagToStock(tagId) {
+            if (!this.currentStockForTag) return;
+            
+            try {
+                const response = await fetch(`${API_BASE}/stock-tags/${this.currentStockForTag.symbol}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ tag_id: tagId })
+                });
+                
+                if (response.ok) {
+                    this.showToast('标签添加成功', 'success');
+                    await this.loadStockTags(this.currentStockForTag.symbol);
+                } else {
+                    this.showToast('标签添加失败', 'error');
+                }
+            } catch (error) {
+                console.error('Failed to add tag:', error);
+                this.showToast('标签添加失败', 'error');
+            }
+        },
+        
+        async removeTagFromStock(tagId) {
+            if (!this.currentStockForTag) return;
+            
+            try {
+                const response = await fetch(`${API_BASE}/stock-tags/${this.currentStockForTag.symbol}/${tagId}`, {
+                    method: 'DELETE'
+                });
+                
+                if (response.ok) {
+                    this.showToast('标签移除成功', 'success');
+                    await this.loadStockTags(this.currentStockForTag.symbol);
+                } else {
+                    this.showToast('标签移除失败', 'error');
+                }
+            } catch (error) {
+                console.error('Failed to remove tag:', error);
+                this.showToast('标签移除失败', 'error');
+            }
+        },
+        
+        async createAndAddTag() {
+            if (!this.newTagName.trim() || !this.currentStockForTag) return;
+            
+            try {
+                // First create the tag
+                const createResponse = await fetch(`${API_BASE}/tags`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        name: this.newTagName.trim(),
+                        color: this.newTagColor,
+                        description: ''
+                    })
+                });
+                
+                if (!createResponse.ok) {
+                    this.showToast('创建标签失败', 'error');
+                    return;
+                }
+                
+                const newTag = await createResponse.json();
+                
+                // Add the new tag to the stock
+                await this.addTagToStock(newTag.id);
+                
+                // Reload all tags
+                await this.loadTags();
+                
+                this.newTagName = '';
+            } catch (error) {
+                console.error('Failed to create and add tag:', error);
+                this.showToast('创建标签失败', 'error');
             }
         },
         
@@ -1283,6 +1545,8 @@ createApp({
                 this.loadStockList();
             } else if (newTab === 'watchlist') {
                 this.loadWatchlistStocks();
+            } else if (newTab === 'warninglist') {
+                this.loadWarninglistStocks();
             } else if (newTab === 'analytics') {
                 this.$nextTick(() => {
                     if (Object.keys(this.industryData).length > 0) {

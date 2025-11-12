@@ -98,6 +98,34 @@ type HistoricalMover struct {
 	ChangePercent float64 `json:"change_percent"`
 }
 
+type Tag struct {
+	ID          int64  `json:"id"`
+	Name        string `json:"name"`
+	Color       string `json:"color"`
+	Description string `json:"description"`
+	CreatedAt   string `json:"created_at"`
+	UpdatedAt   string `json:"updated_at"`
+}
+
+type StockTag struct {
+	ID        int64  `json:"id"`
+	StockCode string `json:"stock_code"`
+	TagID     int64  `json:"tag_id"`
+	TagName   string `json:"tag_name"`
+	TagColor  string `json:"tag_color"`
+	CreatedAt string `json:"created_at"`
+}
+
+type CreateTagRequest struct {
+	Name        string `json:"name" binding:"required"`
+	Color       string `json:"color"`
+	Description string `json:"description"`
+}
+
+type AddStockTagRequest struct {
+	TagID int64 `json:"tag_id" binding:"required"`
+}
+
 func initDB(dbPath string) error {
 	var err error
 	// Add _loc=auto for proper UTF-8 handling
@@ -123,7 +151,7 @@ func main() {
 	// Enable CORS
 	r.Use(func(c *gin.Context) {
 		c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
-		c.Writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+		c.Writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
 		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 		if c.Request.Method == "OPTIONS" {
 			c.AbortWithStatus(204)
@@ -151,6 +179,18 @@ func main() {
 	r.GET("/api/filter/stocks", filterStocksHandler)
 	r.GET("/api/realtime/mktcap/:stock_code", getRealtimeMktcapHandler)
 	r.GET("/api/strategy/scan", strategyScanHandler)
+	
+	// Tag management routes
+	r.GET("/api/tags", getTagsHandler)
+	r.POST("/api/tags", createTagHandler)
+	r.PUT("/api/tags/:id", updateTagHandler)
+	r.DELETE("/api/tags/:id", deleteTagHandler)
+	
+	// Stock tag routes (use different path to avoid conflict)
+	r.GET("/api/stock-tags/:code", getStockTagsHandler)
+	r.POST("/api/stock-tags/:code", addStockTagHandler)
+	r.DELETE("/api/stock-tags/:code/:tagId", removeStockTagHandler)
+	r.GET("/api/tags/:id/stocks", getStocksByTagHandler)
 	
 	// Serve static files from frontend directory
 	r.StaticFile("/", "../frontend/index.html")
@@ -944,11 +984,12 @@ func filterStocksHandler(c *gin.Context) {
 	
 	// Get stocks that meet criteria and collect trigger dates
 	// Calculate change from previous day's close to current day's close
+	// Join with stock_list to get full stock name
 	query := `
 		WITH daily_changes AS (
 			SELECT 
 				h1.stock_code,
-				h1.stock_name,
+				COALESCE(sl.name, h1.stock_name) as stock_name,
 				h1.exchange,
 				h1.trade_date,
 				h1.close,
@@ -958,6 +999,7 @@ func filterStocksHandler(c *gin.Context) {
 					ELSE 0
 				END as change_percent
 			FROM stock_history h1
+			LEFT JOIN stock_list sl ON h1.stock_code = sl.symbol
 			LEFT JOIN stock_history h2 ON h1.stock_code = h2.stock_code 
 				AND h2.trade_date = (
 					SELECT MAX(trade_date) 
@@ -1503,5 +1545,275 @@ func strategyScanHandler(c *gin.Context) {
 		"max_mktcap":        maxMktcapStr,
 		"count":             len(results),
 		"results":           results,
+	})
+}
+
+
+// ============================================================================
+// Tag Management Handlers
+// ============================================================================
+
+func getTagsHandler(c *gin.Context) {
+	query := "SELECT id, name, color, description, created_at, updated_at FROM tags ORDER BY name"
+	rows, err := db.Query(query)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	defer rows.Close()
+
+	var tags []Tag
+	for rows.Next() {
+		var tag Tag
+		if err := rows.Scan(&tag.ID, &tag.Name, &tag.Color, &tag.Description, &tag.CreatedAt, &tag.UpdatedAt); err != nil {
+			continue
+		}
+		tags = append(tags, tag)
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"tags":  tags,
+		"count": len(tags),
+	})
+}
+
+func createTagHandler(c *gin.Context) {
+	var req CreateTagRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Set default color if not provided
+	if req.Color == "" {
+		req.Color = "#3B82F6"
+	}
+
+	query := "INSERT INTO tags (name, color, description) VALUES (?, ?, ?)"
+	result, err := db.Exec(query, req.Name, req.Color, req.Description)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	id, _ := result.LastInsertId()
+	c.JSON(http.StatusCreated, gin.H{
+		"id":      id,
+		"message": "Tag created successfully",
+	})
+}
+
+func updateTagHandler(c *gin.Context) {
+	tagID := c.Param("id")
+	var req CreateTagRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	query := "UPDATE tags SET name = ?, color = ?, description = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
+	result, err := db.Exec(query, req.Name, req.Color, req.Description, tagID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	rowsAffected, _ := result.RowsAffected()
+	if rowsAffected == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Tag not found"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Tag updated successfully"})
+}
+
+func deleteTagHandler(c *gin.Context) {
+	tagID := c.Param("id")
+
+	query := "DELETE FROM tags WHERE id = ?"
+	result, err := db.Exec(query, tagID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	rowsAffected, _ := result.RowsAffected()
+	if rowsAffected == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Tag not found"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Tag deleted successfully"})
+}
+
+// ============================================================================
+// Stock Tag Handlers
+// ============================================================================
+
+func getStockTagsHandler(c *gin.Context) {
+	stockCode := c.Param("code")
+
+	query := `
+		SELECT st.id, st.stock_code, st.tag_id, t.name, t.color, st.created_at
+		FROM stock_tags st
+		JOIN tags t ON st.tag_id = t.id
+		WHERE st.stock_code = ?
+		ORDER BY t.name
+	`
+	rows, err := db.Query(query, stockCode)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	defer rows.Close()
+
+	var stockTags []StockTag
+	for rows.Next() {
+		var st StockTag
+		if err := rows.Scan(&st.ID, &st.StockCode, &st.TagID, &st.TagName, &st.TagColor, &st.CreatedAt); err != nil {
+			continue
+		}
+		stockTags = append(stockTags, st)
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"stock_code": stockCode,
+		"tags":       stockTags,
+		"count":      len(stockTags),
+	})
+}
+
+func addStockTagHandler(c *gin.Context) {
+	stockCode := c.Param("code")
+	var req AddStockTagRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	query := "INSERT INTO stock_tags (stock_code, tag_id) VALUES (?, ?)"
+	result, err := db.Exec(query, stockCode, req.TagID)
+	if err != nil {
+		// Check if it's a duplicate
+		if strings.Contains(err.Error(), "UNIQUE") {
+			c.JSON(http.StatusConflict, gin.H{"error": "Tag already added to this stock"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	id, _ := result.LastInsertId()
+	c.JSON(http.StatusCreated, gin.H{
+		"id":      id,
+		"message": "Tag added to stock successfully",
+	})
+}
+
+func removeStockTagHandler(c *gin.Context) {
+	stockCode := c.Param("code")
+	tagID := c.Param("tagId")
+
+	query := "DELETE FROM stock_tags WHERE stock_code = ? AND tag_id = ?"
+	result, err := db.Exec(query, stockCode, tagID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	rowsAffected, _ := result.RowsAffected()
+	if rowsAffected == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Stock tag not found"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Tag removed from stock successfully"})
+}
+
+
+func getStocksByTagHandler(c *gin.Context) {
+	tagID := c.Param("id")
+	limit := c.DefaultQuery("limit", "100")
+	offset := c.DefaultQuery("offset", "0")
+
+	// Get latest daily table
+	var latestTable string
+	err := db.QueryRow("SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'stock_daily_%' ORDER BY name DESC LIMIT 1").Scan(&latestTable)
+	
+	var stocks []StockWithTrading
+	
+	if err != nil || latestTable == "" {
+		// No daily table found, return stocks without trading data
+		query := `
+			SELECT DISTINCT sl.ts_code, sl.symbol, sl.name, sl.pinyin
+			FROM stock_list sl
+			JOIN stock_tags st ON sl.symbol = st.stock_code
+			WHERE st.tag_id = ?
+			ORDER BY sl.symbol
+			LIMIT ? OFFSET ?
+		`
+		rows, err := db.Query(query, tagID, limit, offset)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		defer rows.Close()
+
+		for rows.Next() {
+			var stock StockWithTrading
+			if err := rows.Scan(&stock.TsCode, &stock.Symbol, &stock.Name, &stock.Pinyin); err != nil {
+				continue
+			}
+			stocks = append(stocks, stock)
+		}
+	} else {
+		// Join with latest daily table for trading data
+		query := fmt.Sprintf(`
+			SELECT 
+				sl.ts_code, sl.symbol, sl.name, sl.pinyin,
+				d.trade, d.changepercent, d.mktcap, d.turnoverratio
+			FROM stock_list sl
+			JOIN stock_tags st ON sl.symbol = st.stock_code
+			LEFT JOIN (
+				SELECT 
+					REPLACE(REPLACE(REPLACE(symbol, 'sh', ''), 'sz', ''), 'bj', '') as clean_symbol,
+					MAX(trade) as trade, 
+					MAX(changepercent) as changepercent, 
+					MAX(mktcap) as mktcap, 
+					MAX(turnoverratio) as turnoverratio
+				FROM %s
+				GROUP BY clean_symbol
+			) d ON sl.symbol = d.clean_symbol
+			WHERE st.tag_id = ?
+			ORDER BY sl.symbol
+			LIMIT ? OFFSET ?
+		`, latestTable)
+		
+		rows, err := db.Query(query, tagID, limit, offset)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		defer rows.Close()
+
+		for rows.Next() {
+			var stock StockWithTrading
+			if err := rows.Scan(&stock.TsCode, &stock.Symbol, &stock.Name, &stock.Pinyin,
+				&stock.Trade, &stock.ChangePercent, &stock.Mktcap, &stock.TurnoverRatio); err != nil {
+				continue
+			}
+			stocks = append(stocks, stock)
+		}
+	}
+
+	// Get tag info
+	var tagName string
+	db.QueryRow("SELECT name FROM tags WHERE id = ?", tagID).Scan(&tagName)
+
+	c.JSON(http.StatusOK, gin.H{
+		"tag_id":     tagID,
+		"tag_name":   tagName,
+		"stocks":     stocks,
+		"count":      len(stocks),
 	})
 }

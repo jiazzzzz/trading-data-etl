@@ -56,17 +56,38 @@ python query_db.py --show stock_list
 python query_db.py --sql "SELECT * FROM stock_list WHERE area='上海' LIMIT 10"
 ```
 
-### 4. Start Web Server (Go)
+### 4. Start Servers
+
+**Option A: One-Click Start (Recommended)**
 ```bash
+# Double-click this file or run:
+start_servers.bat
+```
+This will:
+- Start Go backend server (Port 8080)
+- Start frontend server (Port 3000)
+- Open browser automatically
+
+**Option B: Manual Start**
+```bash
+# Terminal 1: Start backend
 cd server
-go mod download
 go run main.go
+
+# Terminal 2: Start frontend
+cd frontend
+python -m http.server 3000
 ```
 
-Server runs at: http://localhost:8080
+**Stop Servers:**
+```bash
+# Double-click or run:
+stop_servers.bat
+```
 
-### 5. Use Web UI
-Open `server/index.html` in your browser for an interactive interface.
+### 5. Access Web UI
+- Frontend: http://localhost:3000
+- Backend API: http://localhost:8080/api
 
 ## 📁 Project Structure
 
@@ -201,12 +222,39 @@ passwd = your_password
 
 ## 💻 Daily Routine
 
-### daily_update.py - Your Daily Script ⭐
+### daily_sina_update.py - Recommended Daily Script ⭐
 
-Run this **every day** to keep your data up-to-date:
+Run this **every day** to keep your data up-to-date (No TDX export required!):
 
 ```bash
-# Full daily update (recommended)
+# Daily update using Sina API only (recommended)
+python daily_sina_update.py
+```
+
+**What it does:**
+1. Updates stock list (if TDX folder exists, optional)
+2. Fetches latest daily trading data from Sina Finance
+3. **Appends Sina data to stock_history table** (for historical charts)
+
+**Options:**
+```bash
+python daily_sina_update.py --db jia-stk.db           # Specify database
+python daily_sina_update.py --skip-stock-list         # Skip stock list update
+python daily_sina_update.py --skip-history-append     # Skip appending to history
+```
+
+**Benefits:**
+- ✅ No TDX export needed daily
+- ✅ Fully automated via API
+- ✅ Builds historical data automatically
+- ✅ Faster than TDX export
+
+### daily_update.py - Full Update with TDX
+
+Use this for **initial setup** or when you need to import TDX historical data:
+
+```bash
+# Full update with TDX import
 python daily_update.py
 ```
 
@@ -358,7 +406,7 @@ curl "http://localhost:8080/api/query?sql=SELECT%20*%20FROM%20stock_list%20WHERE
 
 ## 🤖 Automation
 
-### Windows Task Scheduler
+### Windows Task Scheduler (Recommended)
 Create a daily task to run after market close:
 
 1. Open Task Scheduler
@@ -366,21 +414,26 @@ Create a daily task to run after market close:
 3. Set trigger: Daily at 4:00 PM (after market close)
 4. Action: Start a program
    - Program: `python`
-   - Arguments: `C:\work\jia-stk\daily_update.py`
+   - Arguments: `C:\work\jia-stk\daily_sina_update.py`
    - Start in: `C:\work\jia-stk`
+
+Or simply double-click `daily_sina_update.bat`
 
 ### Linux Cron
 ```bash
-# Run at 4 PM on weekdays (after market close)
-0 16 * * 1-5 cd /path/to/jia-stk && python daily_update.py
+# Run at 4 PM on weekdays (after market close) - Sina only
+0 16 * * 1-5 cd /path/to/jia-stk && python daily_sina_update.py
 
 # Or run at 9 PM to ensure all data is available
-0 21 * * 1-5 cd /path/to/jia-stk && python daily_update.py
+0 21 * * 1-5 cd /path/to/jia-stk && python daily_sina_update.py
 ```
 
 ### Manual Run
 ```bash
-# Just run this command daily
+# Recommended: Sina API only (no TDX needed)
+python daily_sina_update.py
+
+# Or with TDX import (for initial setup)
 python daily_update.py
 ```
 
