@@ -89,6 +89,10 @@ createApp({
             strategySortBy: 'volume_ratio',
             strategySortOrder: 'desc',
             
+            // Strategy cache for watchlist matching
+            strategyCacheDate: null,
+            strategyCachedResults: {},
+            
             // Sparkline cache (use object for Vue reactivity)
             loadedSparklines: {},
             
@@ -348,56 +352,73 @@ createApp({
             }
         },
         
-        loadWatchlist() {
-            // Load watchlist from localStorage
-            const saved = localStorage.getItem('stockWatchlist');
-            if (saved) {
-                try {
-                    this.watchlistCodes = JSON.parse(saved);
-                } catch (e) {
-                    this.watchlistCodes = [];
-                }
+        async loadWatchlist() {
+            // Load watchlist from database
+            try {
+                const response = await fetch(`${API_BASE}/watchlist`);
+                const data = await response.json();
+                this.watchlistCodes = data.codes || [];
+            } catch (error) {
+                console.error('Error loading watchlist:', error);
+                this.watchlistCodes = [];
             }
             
-            // Load warninglist from localStorage
-            const savedWarning = localStorage.getItem('stockWarninglist');
-            if (savedWarning) {
-                try {
-                    this.warninglistCodes = JSON.parse(savedWarning);
-                } catch (e) {
-                    this.warninglistCodes = [];
-                }
+            // Load warninglist from database
+            try {
+                const response = await fetch(`${API_BASE}/warninglist`);
+                const data = await response.json();
+                this.warninglistCodes = data.codes || [];
+            } catch (error) {
+                console.error('Error loading warninglist:', error);
+                this.warninglistCodes = [];
             }
         },
         
-        saveWatchlist() {
-            // Save watchlist to localStorage
-            localStorage.setItem('stockWatchlist', JSON.stringify(this.watchlistCodes));
-        },
-        
-        saveWarninglist() {
-            // Save warninglist to localStorage
-            localStorage.setItem('stockWarninglist', JSON.stringify(this.warninglistCodes));
-        },
-        
-        addToWatchlist(stock) {
+        async addToWatchlist(stock) {
             const code = stock.symbol || stock.stock_code;
-            if (!this.watchlistCodes.includes(code)) {
-                this.watchlistCodes.push(code);
-                this.saveWatchlist();
-                this.showSuccess(`已添加 ${stock.name || stock.stock_name} 到自选股`);
-            } else {
+            if (this.watchlistCodes.includes(code)) {
                 this.showError('该股票已在自选股中');
+                return;
+            }
+            
+            try {
+                const response = await fetch(`${API_BASE}/watchlist/${code}`, {
+                    method: 'POST'
+                });
+                const data = await response.json();
+                
+                if (response.ok) {
+                    this.watchlistCodes.push(code);
+                    this.showSuccess(`已添加 ${stock.name || stock.stock_name} 到自选股`);
+                } else {
+                    this.showError(data.error || '添加失败');
+                }
+            } catch (error) {
+                console.error('Error adding to watchlist:', error);
+                this.showError('添加失败');
             }
         },
         
-        removeFromWatchlist(code) {
-            const index = this.watchlistCodes.indexOf(code);
-            if (index > -1) {
-                this.watchlistCodes.splice(index, 1);
-                this.saveWatchlist();
-                this.loadWatchlistStocks();
-                this.showSuccess('已从自选股移除');
+        async removeFromWatchlist(code) {
+            try {
+                const response = await fetch(`${API_BASE}/watchlist/${code}`, {
+                    method: 'DELETE'
+                });
+                const data = await response.json();
+                
+                if (response.ok) {
+                    const index = this.watchlistCodes.indexOf(code);
+                    if (index > -1) {
+                        this.watchlistCodes.splice(index, 1);
+                    }
+                    this.loadWatchlistStocks();
+                    this.showSuccess('已从自选股移除');
+                } else {
+                    this.showError(data.error || '移除失败');
+                }
+            } catch (error) {
+                console.error('Error removing from watchlist:', error);
+                this.showError('移除失败');
             }
         },
         
@@ -406,30 +427,76 @@ createApp({
             return this.watchlistCodes.includes(code);
         },
         
-        addToWarninglist(stock) {
+        async addToWarninglist(stock) {
             const code = stock.symbol || stock.stock_code;
-            if (!this.warninglistCodes.includes(code)) {
-                this.warninglistCodes.push(code);
-                this.saveWarninglist();
-                this.showSuccess(`已添加 ${stock.name || stock.stock_name} 到预警股`);
-            } else {
+            if (this.warninglistCodes.includes(code)) {
                 this.showError('该股票已在预警股中');
+                return;
+            }
+            
+            try {
+                const response = await fetch(`${API_BASE}/warninglist/${code}`, {
+                    method: 'POST'
+                });
+                const data = await response.json();
+                
+                if (response.ok) {
+                    this.warninglistCodes.push(code);
+                    this.showSuccess(`已添加 ${stock.name || stock.stock_name} 到预警股`);
+                } else {
+                    this.showError(data.error || '添加失败');
+                }
+            } catch (error) {
+                console.error('Error adding to warninglist:', error);
+                this.showError('添加失败');
             }
         },
         
-        removeFromWarninglist(code) {
-            const index = this.warninglistCodes.indexOf(code);
-            if (index > -1) {
-                this.warninglistCodes.splice(index, 1);
-                this.saveWarninglist();
-                this.loadWarninglistStocks();
-                this.showSuccess('已从预警股移除');
+        async removeFromWarninglist(code) {
+            try {
+                const response = await fetch(`${API_BASE}/warninglist/${code}`, {
+                    method: 'DELETE'
+                });
+                const data = await response.json();
+                
+                if (response.ok) {
+                    const index = this.warninglistCodes.indexOf(code);
+                    if (index > -1) {
+                        this.warninglistCodes.splice(index, 1);
+                    }
+                    this.loadWarninglistStocks();
+                    this.showSuccess('已从预警股移除');
+                } else {
+                    this.showError(data.error || '移除失败');
+                }
+            } catch (error) {
+                console.error('Error removing from warninglist:', error);
+                this.showError('移除失败');
             }
         },
         
         isInWarninglist(stock) {
             const code = stock.symbol || stock.stock_code;
             return this.warninglistCodes.includes(code);
+        },
+        
+        async refreshStrategyCache() {
+            // Force refresh strategy cache and check matches
+            this.strategyCacheDate = null;
+            this.strategyCachedResults = {};
+            
+            if (this.activeTab === 'watchlist' && this.watchlist.length > 0) {
+                this.loading = true;
+                try {
+                    await this.checkStrategyMatches();
+                    this.showSuccess('策略匹配已更新');
+                } catch (error) {
+                    console.error('Error refreshing strategy cache:', error);
+                    this.showError('刷新策略失败');
+                } finally {
+                    this.loading = false;
+                }
+            }
         },
         
         async loadWatchlistStocks() {
@@ -447,7 +514,22 @@ createApp({
                 const data = await response.json();
                 
                 if (data.results) {
+                    // Preserve existing matchedStrategies if they exist
+                    const existingMatches = {};
+                    if (this.watchlist && this.watchlist.length > 0) {
+                        this.watchlist.forEach(stock => {
+                            if (stock.matchedStrategies && stock.matchedStrategies.length > 0) {
+                                existingMatches[stock.symbol] = stock.matchedStrategies;
+                            }
+                        });
+                    }
+                    
                     this.watchlist = data.results;
+                    
+                    // Restore matchedStrategies or initialize as empty
+                    this.watchlist.forEach(stock => {
+                        stock.matchedStrategies = existingMatches[stock.symbol] || [];
+                    });
                     
                     // Try to get latest trading data
                     const latestTableResponse = await fetch(`${API_BASE}/tables`);
@@ -472,6 +554,9 @@ createApp({
                                     console.error('Error loading trade data for', stock.symbol, e);
                                 }
                             }
+                            
+                            // Don't check strategy matches automatically
+                            // User needs to click "刷新策略" button to check
                         }
                     }
                 }
@@ -481,6 +566,65 @@ createApp({
             } finally {
                 this.loading = false;
             }
+        },
+        
+        async checkStrategyMatches() {
+            // Get current date for cache key
+            const today = new Date().toISOString().split('T')[0].replace(/-/g, '');
+            
+            // Check if cache is valid (same day)
+            if (this.strategyCacheDate !== today) {
+                console.log('Fetching fresh strategy data...');
+                this.strategyCachedResults = {};
+                this.strategyCacheDate = today;
+                
+                // Fetch all strategies once and cache results
+                for (let strategy of this.predefinedStrategies) {
+                    try {
+                        const params = strategy.params;
+                        const url = `${API_BASE}/strategy/scan?date=&volume_multiplier=${params.volumeMultiplier}&min_change_increase=${params.minChangeIncrease}&min_turnover=${params.minTurnover}&max_mktcap=${params.maxMktcap}&limit=1000`;
+                        
+                        const response = await fetch(url);
+                        const data = await response.json();
+                        
+                        if (data.results) {
+                            // Cache results by stock code for fast lookup
+                            this.strategyCachedResults[strategy.id] = {};
+                            for (let result of data.results) {
+                                this.strategyCachedResults[strategy.id][result.stock_code] = result;
+                            }
+                        }
+                    } catch (e) {
+                        console.error('Error fetching strategy', strategy.name, e);
+                    }
+                }
+                console.log('Strategy cache updated');
+            } else {
+                console.log('Using cached strategy data');
+            }
+            
+            // Now check each watchlist stock against cached results (fast)
+            for (let i = 0; i < this.watchlist.length; i++) {
+                const stock = this.watchlist[i];
+                const matches = [];
+                
+                for (let strategy of this.predefinedStrategies) {
+                    const cachedResults = this.strategyCachedResults[strategy.id];
+                    if (cachedResults && cachedResults[stock.symbol]) {
+                        matches.push({
+                            name: strategy.name,
+                            description: strategy.description,
+                            data: cachedResults[stock.symbol]
+                        });
+                    }
+                }
+                
+                // Use Vue.set or direct assignment to trigger reactivity
+                this.watchlist[i].matchedStrategies = matches;
+            }
+            
+            // Force Vue to update the view
+            this.$forceUpdate();
         },
         
         async loadWarninglistStocks() {

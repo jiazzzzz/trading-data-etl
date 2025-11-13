@@ -192,6 +192,16 @@ func main() {
 	r.DELETE("/api/stock-tags/:code/:tagId", removeStockTagHandler)
 	r.GET("/api/tags/:id/stocks", getStocksByTagHandler)
 	
+	// Watchlist routes
+	r.GET("/api/watchlist", getWatchlistHandler)
+	r.POST("/api/watchlist/:code", addToWatchlistHandler)
+	r.DELETE("/api/watchlist/:code", removeFromWatchlistHandler)
+	
+	// Warninglist routes
+	r.GET("/api/warninglist", getWarninglistHandler)
+	r.POST("/api/warninglist/:code", addToWarninglistHandler)
+	r.DELETE("/api/warninglist/:code", removeFromWarninglistHandler)
+	
 	// Serve static files from frontend directory
 	r.StaticFile("/", "../frontend/index.html")
 	r.StaticFile("/index.html", "../frontend/index.html")
@@ -485,7 +495,8 @@ func getTopGainersHandler(c *gin.Context) {
 		return
 	}
 
-	query := "SELECT symbol, code, name, trade, pricechange, changepercent, buy, sell, settlement, open, high, low, volume, amount, ticktime, per, pb, mktcap, nmc, turnoverratio, dump_time FROM " + tableName + " ORDER BY changepercent DESC LIMIT ?"
+	// Filter out suspended stocks (trade = 0 or open = 0)
+	query := "SELECT symbol, code, name, trade, pricechange, changepercent, buy, sell, settlement, open, high, low, volume, amount, ticktime, per, pb, mktcap, nmc, turnoverratio, dump_time FROM " + tableName + " WHERE trade > 0 AND open > 0 ORDER BY changepercent DESC LIMIT ?"
 	rows, err := db.Query(query, limit)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -523,7 +534,8 @@ func getTopLosersHandler(c *gin.Context) {
 		return
 	}
 
-	query := "SELECT symbol, code, name, trade, pricechange, changepercent, buy, sell, settlement, open, high, low, volume, amount, ticktime, per, pb, mktcap, nmc, turnoverratio, dump_time FROM " + tableName + " ORDER BY changepercent ASC LIMIT ?"
+	// Filter out suspended stocks (trade = 0 or open = 0)
+	query := "SELECT symbol, code, name, trade, pricechange, changepercent, buy, sell, settlement, open, high, low, volume, amount, ticktime, per, pb, mktcap, nmc, turnoverratio, dump_time FROM " + tableName + " WHERE trade > 0 AND open > 0 ORDER BY changepercent ASC LIMIT ?"
 	rows, err := db.Query(query, limit)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -735,7 +747,7 @@ func getHistoricalGainersHandler(c *gin.Context) {
 		WITH current_day AS (
 			SELECT stock_code, stock_name, exchange, trade_date, open, high, low, close, volume, amount
 			FROM stock_history
-			WHERE trade_date = ?
+			WHERE trade_date = ? AND close > 0 AND open > 0
 		),
 		previous_day AS (
 			SELECT h1.stock_code, h1.close as prev_close
@@ -814,7 +826,7 @@ func getHistoricalLosersHandler(c *gin.Context) {
 		WITH current_day AS (
 			SELECT stock_code, stock_name, exchange, trade_date, open, high, low, close, volume, amount
 			FROM stock_history
-			WHERE trade_date = ?
+			WHERE trade_date = ? AND close > 0 AND open > 0
 		),
 		previous_day AS (
 			SELECT h1.stock_code, h1.close as prev_close
@@ -1816,4 +1828,136 @@ func getStocksByTagHandler(c *gin.Context) {
 		"stocks":     stocks,
 		"count":      len(stocks),
 	})
+}
+
+// ============================================================================
+// Watchlist Handlers
+// ============================================================================
+
+func getWatchlistHandler(c *gin.Context) {
+	query := "SELECT stock_code, added_at FROM watchlist ORDER BY added_at DESC"
+	rows, err := db.Query(query)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	defer rows.Close()
+
+	var codes []string
+	for rows.Next() {
+		var code, addedAt string
+		if err := rows.Scan(&code, &addedAt); err != nil {
+			continue
+		}
+		codes = append(codes, code)
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"codes": codes,
+		"count": len(codes),
+	})
+}
+
+func addToWatchlistHandler(c *gin.Context) {
+	stockCode := c.Param("code")
+
+	query := "INSERT OR IGNORE INTO watchlist (stock_code) VALUES (?)"
+	result, err := db.Exec(query, stockCode)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	rowsAffected, _ := result.RowsAffected()
+	if rowsAffected == 0 {
+		c.JSON(http.StatusOK, gin.H{"message": "Stock already in watchlist"})
+		return
+	}
+
+	c.JSON(http.StatusCreated, gin.H{"message": "Added to watchlist"})
+}
+
+func removeFromWatchlistHandler(c *gin.Context) {
+	stockCode := c.Param("code")
+
+	query := "DELETE FROM watchlist WHERE stock_code = ?"
+	result, err := db.Exec(query, stockCode)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	rowsAffected, _ := result.RowsAffected()
+	if rowsAffected == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Stock not in watchlist"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Removed from watchlist"})
+}
+
+// ============================================================================
+// Warninglist Handlers
+// ============================================================================
+
+func getWarninglistHandler(c *gin.Context) {
+	query := "SELECT stock_code, added_at FROM warninglist ORDER BY added_at DESC"
+	rows, err := db.Query(query)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	defer rows.Close()
+
+	var codes []string
+	for rows.Next() {
+		var code, addedAt string
+		if err := rows.Scan(&code, &addedAt); err != nil {
+			continue
+		}
+		codes = append(codes, code)
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"codes": codes,
+		"count": len(codes),
+	})
+}
+
+func addToWarninglistHandler(c *gin.Context) {
+	stockCode := c.Param("code")
+
+	query := "INSERT OR IGNORE INTO warninglist (stock_code) VALUES (?)"
+	result, err := db.Exec(query, stockCode)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	rowsAffected, _ := result.RowsAffected()
+	if rowsAffected == 0 {
+		c.JSON(http.StatusOK, gin.H{"message": "Stock already in warninglist"})
+		return
+	}
+
+	c.JSON(http.StatusCreated, gin.H{"message": "Added to warninglist"})
+}
+
+func removeFromWarninglistHandler(c *gin.Context) {
+	stockCode := c.Param("code")
+
+	query := "DELETE FROM warninglist WHERE stock_code = ?"
+	result, err := db.Exec(query, stockCode)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	rowsAffected, _ := result.RowsAffected()
+	if rowsAffected == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Stock not in warninglist"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Removed from warninglist"})
 }
