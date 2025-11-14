@@ -126,6 +126,35 @@ type AddStockTagRequest struct {
 	TagID int64 `json:"tag_id" binding:"required"`
 }
 
+type Strategy struct {
+	ID                 int64   `json:"id"`
+	Name               string  `json:"name"`
+	Description        string  `json:"description"`
+	VolumeMultiplier   float64 `json:"volume_multiplier"`
+	MinChangeIncrease  float64 `json:"min_change_increase"`
+	MaxChangeIncrease  float64 `json:"max_change_increase"`
+	MinTurnover        float64 `json:"min_turnover"`
+	MaxTurnover        float64 `json:"max_turnover"`
+	MinMktcap          float64 `json:"min_mktcap"`
+	MaxMktcap          float64 `json:"max_mktcap"`
+	IsActive           int     `json:"is_active"`
+	CreatedAt          string  `json:"created_at"`
+	UpdatedAt          string  `json:"updated_at"`
+}
+
+type CreateStrategyRequest struct {
+	Name              string  `json:"name" binding:"required"`
+	Description       string  `json:"description"`
+	VolumeMultiplier  float64 `json:"volume_multiplier" binding:"required"`
+	MinChangeIncrease float64 `json:"min_change_increase" binding:"required"`
+	MaxChangeIncrease float64 `json:"max_change_increase" binding:"required"`
+	MinTurnover       float64 `json:"min_turnover" binding:"required"`
+	MaxTurnover       float64 `json:"max_turnover" binding:"required"`
+	MinMktcap         float64 `json:"min_mktcap"`
+	MaxMktcap         float64 `json:"max_mktcap"`
+	IsActive          int     `json:"is_active"`
+}
+
 func initDB(dbPath string) error {
 	var err error
 	// Add _loc=auto for proper UTF-8 handling
@@ -201,6 +230,12 @@ func main() {
 	r.GET("/api/warninglist", getWarninglistHandler)
 	r.POST("/api/warninglist/:code", addToWarninglistHandler)
 	r.DELETE("/api/warninglist/:code", removeFromWarninglistHandler)
+	
+	// Strategy management routes
+	r.GET("/api/strategies", getStrategiesHandler)
+	r.POST("/api/strategies", createStrategyHandler)
+	r.PUT("/api/strategies/:id", updateStrategyHandler)
+	r.DELETE("/api/strategies/:id", deleteStrategyHandler)
 	
 	// Serve static files from frontend directory
 	r.StaticFile("/", "../frontend/index.html")
@@ -1960,4 +1995,101 @@ func removeFromWarninglistHandler(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "Removed from warninglist"})
+}
+
+// ============================================================================
+// Strategy Management Handlers
+// ============================================================================
+
+func getStrategiesHandler(c *gin.Context) {
+	query := "SELECT id, name, description, volume_multiplier, min_change_increase, max_change_increase, min_turnover, max_turnover, min_mktcap, max_mktcap, is_active, created_at, updated_at FROM strategies ORDER BY id"
+	rows, err := db.Query(query)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	defer rows.Close()
+
+	var strategies []Strategy
+	for rows.Next() {
+		var strategy Strategy
+		if err := rows.Scan(&strategy.ID, &strategy.Name, &strategy.Description, &strategy.VolumeMultiplier, &strategy.MinChangeIncrease, &strategy.MaxChangeIncrease, &strategy.MinTurnover, &strategy.MaxTurnover, &strategy.MinMktcap, &strategy.MaxMktcap, &strategy.IsActive, &strategy.CreatedAt, &strategy.UpdatedAt); err != nil {
+			continue
+		}
+		strategies = append(strategies, strategy)
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"strategies": strategies,
+		"count":      len(strategies),
+	})
+}
+
+func createStrategyHandler(c *gin.Context) {
+	var req CreateStrategyRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Set default is_active if not provided
+	if req.IsActive == 0 {
+		req.IsActive = 1
+	}
+
+	query := "INSERT INTO strategies (name, description, volume_multiplier, min_change_increase, max_change_increase, min_turnover, max_turnover, min_mktcap, max_mktcap, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+	result, err := db.Exec(query, req.Name, req.Description, req.VolumeMultiplier, req.MinChangeIncrease, req.MaxChangeIncrease, req.MinTurnover, req.MaxTurnover, req.MinMktcap, req.MaxMktcap, req.IsActive)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	id, _ := result.LastInsertId()
+	c.JSON(http.StatusCreated, gin.H{
+		"id":      id,
+		"message": "Strategy created successfully",
+	})
+}
+
+func updateStrategyHandler(c *gin.Context) {
+	strategyID := c.Param("id")
+	var req CreateStrategyRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	query := "UPDATE strategies SET name = ?, description = ?, volume_multiplier = ?, min_change_increase = ?, max_change_increase = ?, min_turnover = ?, max_turnover = ?, min_mktcap = ?, max_mktcap = ?, is_active = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
+	result, err := db.Exec(query, req.Name, req.Description, req.VolumeMultiplier, req.MinChangeIncrease, req.MaxChangeIncrease, req.MinTurnover, req.MaxTurnover, req.MinMktcap, req.MaxMktcap, req.IsActive, strategyID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	rowsAffected, _ := result.RowsAffected()
+	if rowsAffected == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Strategy not found"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Strategy updated successfully"})
+}
+
+func deleteStrategyHandler(c *gin.Context) {
+	strategyID := c.Param("id")
+
+	query := "DELETE FROM strategies WHERE id = ?"
+	result, err := db.Exec(query, strategyID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	rowsAffected, _ := result.RowsAffected()
+	if rowsAffected == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Strategy not found"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Strategy deleted successfully"})
 }

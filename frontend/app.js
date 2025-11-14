@@ -38,7 +38,8 @@ createApp({
                 { id: 'gainers', name: '涨幅榜', icon: 'fas fa-arrow-up' },
                 { id: 'losers', name: '跌幅榜', icon: 'fas fa-arrow-down' },
                 { id: 'analytics', name: '数据分析', icon: 'fas fa-chart-pie' },
-                { id: 'strategy', name: '策略选股', icon: 'fas fa-magic' }
+                { id: 'strategy', name: '策略选股', icon: 'fas fa-magic' },
+                { id: 'strategyManage', name: '策略管理', icon: 'fas fa-cog' }
             ],
             
             topGainers: [],
@@ -99,36 +100,28 @@ createApp({
             // Toast notifications
             toasts: [],
             toastIdCounter: 0,
-            predefinedStrategies: [
-                {
-                    id: 'volume_surge',
-                    name: '成交量倍增+涨幅加速',
-                    description: '当日成交量≥前日2倍 + 当日涨幅-前日涨幅≥5% + 换手率≥5%',
-                    params: { volumeMultiplier: 2.0, minChangeIncrease: 5.0, minTurnover: 5.0, maxMktcap: 0 }
-                },
-                {
-                    id: 'small_cap_surge',
-                    name: '小盘股放量突破',
-                    description: '总市值≤100亿 + 成交量≥前日3倍 + 涨幅加速≥3%',
-                    params: { volumeMultiplier: 3.0, minChangeIncrease: 3.0, minTurnover: 3.0, maxMktcap: 100 }
-                },
-                {
-                    id: 'strong_momentum',
-                    name: '强势动能股',
-                    description: '成交量≥前日1.5倍 + 涨幅加速≥7% + 换手率≥8%',
-                    params: { volumeMultiplier: 1.5, minChangeIncrease: 7.0, minTurnover: 8.0, maxMktcap: 0 }
-                },
-                {
-                    id: 'conservative',
-                    name: '稳健放量',
-                    description: '成交量≥前日1.5倍 + 涨幅加速≥2% + 换手率≥3%',
-                    params: { volumeMultiplier: 1.5, minChangeIncrease: 2.0, minTurnover: 3.0, maxMktcap: 0 }
-                }
-            ],
+
             
             gainersChartInstance: null,
             losersChartInstance: null,
-            industryChartInstance: null
+            industryChartInstance: null,
+            
+            // Strategy management
+            strategies: [],
+            showStrategyModal: false,
+            editingStrategy: null,
+            strategyForm: {
+                name: '',
+                description: '',
+                volume_multiplier: 1.5,
+                min_change_increase: 2.0,
+                max_change_increase: 100.0,
+                min_turnover: 3.0,
+                max_turnover: 100.0,
+                min_mktcap: 0,
+                max_mktcap: 0,
+                is_active: 1
+            }
         };
     },
     
@@ -332,6 +325,7 @@ createApp({
             await this.loadTables();
             await this.loadStats();
             await this.loadTags();
+            await this.loadStrategies();
             await this.loadStockList();
             await this.loadIndustryData();
             
@@ -349,6 +343,102 @@ createApp({
                 this.allTags = data.tags || [];
             } catch (error) {
                 console.error('Error loading tags:', error);
+            }
+        },
+        
+        async loadStrategies() {
+            try {
+                const response = await fetch(`${API_BASE}/strategies`);
+                const data = await response.json();
+                this.strategies = data.strategies || [];
+            } catch (error) {
+                console.error('Error loading strategies:', error);
+            }
+        },
+        
+        openStrategyModal(strategy = null) {
+            if (strategy) {
+                this.editingStrategy = strategy;
+                this.strategyForm = { ...strategy };
+            } else {
+                this.editingStrategy = null;
+                this.strategyForm = {
+                    name: '',
+                    description: '',
+                    volume_multiplier: 1.5,
+                    min_change_increase: 2.0,
+                    max_change_increase: 100.0,
+                    min_turnover: 3.0,
+                    max_turnover: 100.0,
+                    min_mktcap: 0,
+                    max_mktcap: 0,
+                    is_active: 1
+                };
+            }
+            this.showStrategyModal = true;
+        },
+        
+        closeStrategyModal() {
+            this.showStrategyModal = false;
+            this.editingStrategy = null;
+        },
+        
+        async saveStrategy() {
+            try {
+                const url = this.editingStrategy 
+                    ? `${API_BASE}/strategies/${this.editingStrategy.id}`
+                    : `${API_BASE}/strategies`;
+                
+                const method = this.editingStrategy ? 'PUT' : 'POST';
+                
+                const response = await fetch(url, {
+                    method: method,
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(this.strategyForm)
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    this.showSuccess(this.editingStrategy ? '策略已更新' : '策略已创建');
+                    await this.loadStrategies();
+                    this.closeStrategyModal();
+                    // Clear strategy cache to force refresh
+                    this.strategyCacheDate = null;
+                    this.strategyCachedResults = {};
+                } else {
+                    this.showError(data.error || '保存失败');
+                }
+            } catch (error) {
+                console.error('Error saving strategy:', error);
+                this.showError('保存失败');
+            }
+        },
+        
+        async deleteStrategy(strategy) {
+            if (!confirm(`确定要删除策略"${strategy.name}"吗？`)) {
+                return;
+            }
+            
+            try {
+                const response = await fetch(`${API_BASE}/strategies/${strategy.id}`, {
+                    method: 'DELETE'
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    this.showSuccess('策略已删除');
+                    await this.loadStrategies();
+                    // Clear strategy cache
+                    this.strategyCacheDate = null;
+                    this.strategyCachedResults = {};
+                } else {
+                    this.showError(data.error || '删除失败');
+                }
+            } catch (error) {
+                console.error('Error deleting strategy:', error);
+                this.showError('删除失败');
             }
         },
         
@@ -578,11 +668,11 @@ createApp({
                 this.strategyCachedResults = {};
                 this.strategyCacheDate = today;
                 
-                // Fetch all strategies once and cache results
-                for (let strategy of this.predefinedStrategies) {
+                // Fetch all active strategies once and cache results
+                const activeStrategies = this.strategies.filter(s => s.is_active === 1);
+                for (let strategy of activeStrategies) {
                     try {
-                        const params = strategy.params;
-                        const url = `${API_BASE}/strategy/scan?date=&volume_multiplier=${params.volumeMultiplier}&min_change_increase=${params.minChangeIncrease}&min_turnover=${params.minTurnover}&max_mktcap=${params.maxMktcap}&limit=1000`;
+                        const url = `${API_BASE}/strategy/scan?date=&volume_multiplier=${strategy.volume_multiplier}&min_change_increase=${strategy.min_change_increase}&min_turnover=${strategy.min_turnover}&max_mktcap=${strategy.max_mktcap}&limit=1000`;
                         
                         const response = await fetch(url);
                         const data = await response.json();
@@ -604,11 +694,12 @@ createApp({
             }
             
             // Now check each watchlist stock against cached results (fast)
+            const activeStrategies = this.strategies.filter(s => s.is_active === 1);
             for (let i = 0; i < this.watchlist.length; i++) {
                 const stock = this.watchlist[i];
                 const matches = [];
                 
-                for (let strategy of this.predefinedStrategies) {
+                for (let strategy of activeStrategies) {
                     const cachedResults = this.strategyCachedResults[strategy.id];
                     if (cachedResults && cachedResults[stock.symbol]) {
                         matches.push({
@@ -1203,10 +1294,10 @@ createApp({
         },
         
         applyPredefinedStrategy(strategy) {
-            this.strategyVolumeMultiplier = strategy.params.volumeMultiplier;
-            this.strategyMinChangeIncrease = strategy.params.minChangeIncrease;
-            this.strategyMinTurnover = strategy.params.minTurnover;
-            this.strategyMaxMktcap = strategy.params.maxMktcap;
+            this.strategyVolumeMultiplier = strategy.volume_multiplier;
+            this.strategyMinChangeIncrease = strategy.min_change_increase;
+            this.strategyMinTurnover = strategy.min_turnover;
+            this.strategyMaxMktcap = strategy.max_mktcap;
             this.runStrategyScanner();
         },
         
