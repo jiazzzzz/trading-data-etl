@@ -95,14 +95,81 @@ class StockInfo():
         df = DataFrame(stock_data)
         return df
     
-    #Below functions are getting data from tushare (deprecated, use get_stock_list_from_tdx instead)
+    def get_stock_list_from_sina(self):
+        """
+        Get stock list from East Money API (free, no auth needed, paginated).
+        Returns DataFrame with columns: ts_code, symbol, name, area, industry, list_date
+        """
+        import time
+        self.logger.info("Getting stock list from East Money...")
+        base_url = ("https://push2.eastmoney.com/api/qt/clist/get"
+                    "?pn={}&pz=100&po=1&np=1"
+                    "&fields=f12,f14"
+                    "&fid=f12&fs=m:0+t:6,m:0+t:80,m:1+t:2,m:1+t:23,m:0+t:81+s:2048")
+
+        stock_data = []
+        page = 1
+        total_pages = None
+
+        while True:
+            try:
+                resp = requests.get(base_url.format(page), timeout=15)
+                data = resp.json()
+                if not data or not data.get('data') or not data['data'].get('diff'):
+                    break
+                items = data['data']['diff']
+                if not items:
+                    break
+                if total_pages is None:
+                    total = data['data'].get('total', 0)
+                    total_pages = (total + 99) // 100
+                    self.logger.info(f"Total stocks: {total}, pages: {total_pages}")
+            except Exception as e:
+                self.logger.err(f"Error fetching page {page}: {str(e)}")
+                break
+
+            for item in items:
+                try:
+                    sym = str(item.get('f12', ''))
+                    name = item.get('f14', '')
+                    if not sym or not name:
+                        continue
+                    if sym.startswith('6'):
+                        exch = 'SH'
+                    elif sym.startswith(('0', '3')):
+                        exch = 'SZ'
+                    elif sym.startswith(('8', '4', '9')):
+                        exch = 'BJ'
+                    else:
+                        continue
+                    ts_code = f"{sym}.{exch}"
+                    stock_data.append({
+                        'ts_code': ts_code,
+                        'symbol': sym,
+                        'name': name,
+                        'area': '',
+                        'industry': '',
+                        'list_date': ''
+                    })
+                except Exception:
+                    continue
+
+            page += 1
+            if total_pages and page > total_pages:
+                break
+            time.sleep(0.1)
+
+        if not stock_data:
+            self.logger.err("No stocks parsed from East Money response")
+            return None
+
+        self.logger.info(f"Fetched {len(stock_data)} stocks from East Money")
+        return DataFrame(stock_data)
+
+    #Below functions are getting data from tushare (deprecated, use get_stock_list_from_sina instead)
     def get_stock_list(self):
-        """
-        DEPRECATED: Use get_stock_list_from_tdx() instead.
-        This method requires tushare API which may not be available.
-        """
-        self.logger.warn("get_stock_list() is deprecated. Using get_stock_list_from_tdx() instead.")
-        return self.get_stock_list_from_tdx()
+        """Get stock list from online API."""
+        return self.get_stock_list_from_sina()
         
     def get_stock_list_from_tushare(self):
         """

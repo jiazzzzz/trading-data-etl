@@ -18,7 +18,11 @@ class Logger:
         _now_time = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         _log = "%s [%s] [%s] %s"%(_now_time,log_type,self.log_module,log_str)
         #self.logger.write("%s\n"%(_log))
-        print(_log)        
+        try:
+            print(_log)
+        except UnicodeEncodeError:
+            # Fallback for Windows console encoding issues
+            print(_log.encode('utf-8', errors='replace').decode('utf-8', errors='replace'))        
 
     def info(self,log_str):
         self._write_log("INFO",log_str)

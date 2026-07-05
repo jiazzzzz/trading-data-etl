@@ -22,8 +22,8 @@ def insert_pinyin(row):
     out['pinyin'] = com.get_py_from_name(row['name'])
     return pd.Series(out)
 
-def dump_stock_list(db, tdx_folder='./tdx'):
-    """Dump stock list from TDX to database"""
+def dump_stock_list(db):
+    """Dump stock list from online API to database"""
     logger.info("=" * 60)
     logger.info("Dumping stock list to database")
     logger.info("=" * 60)
@@ -32,11 +32,11 @@ def dump_stock_list(db, tdx_folder='./tdx'):
     db_engine = db.create_engine()
     stock_info = StockInfo()
     
-    # Get stock list from TDX folder
-    stock_list = stock_info.get_stock_list_from_tdx(tdx_folder)
+    # Get stock list from Sina
+    stock_list = stock_info.get_stock_list_from_sina()
     
     if stock_list is None or stock_list.empty:
-        logger.err("Failed to retrieve stock list from TDX")
+        logger.err("Failed to retrieve stock list from Sina")
         return False
     
     # Add pinyin
@@ -85,7 +85,6 @@ if __name__ == '__main__':
     
     parser = argparse.ArgumentParser(description='Dump stock data to SQLite database')
     parser.add_argument('--db', default='jia-stk.db', help='SQLite database file path')
-    parser.add_argument('--tdx-folder', default='./tdx', help='TDX folder path')
     parser.add_argument('--skip-list', action='store_true', help='Skip stock list dump')
     parser.add_argument('--skip-daily', action='store_true', help='Skip daily data dump')
     
@@ -94,7 +93,6 @@ if __name__ == '__main__':
     logger.info("=" * 60)
     logger.info("DAILY DATA DUMP")
     logger.info(f"Database: {args.db}")
-    logger.info(f"TDX Folder: {args.tdx_folder}")
     logger.info("=" * 60)
     
     # Initialize SQLite database
@@ -103,7 +101,7 @@ if __name__ == '__main__':
     try:
         # Dump stock list
         if not args.skip_list:
-            if not dump_stock_list(db, args.tdx_folder):
+            if not dump_stock_list(db):
                 logger.err("Stock list dump failed")
                 if not args.skip_daily:
                     logger.warn("Continuing with daily data dump...")

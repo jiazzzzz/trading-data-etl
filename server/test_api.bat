@@ -1,7 +1,7 @@
 @echo off
 echo Testing Stock Data API Server...
 echo.
-echo Make sure the server is running (go run main.go)
+echo Make sure the server is running (go run .)
 echo.
 timeout /t 2 /nobreak > nul
 

@@ -194,20 +194,20 @@ def import_tdx_history(db, tdx_folder='./tdx'):
 # Stock List Update Functions
 # ============================================================================
 
-def update_stock_list(db, tdx_folder='./tdx'):
-    """Update stock list and names from TDX."""
+def update_stock_list(db):
+    """Update stock list and names from online API."""
     logger.info("=" * 60)
-    logger.info("Step 2: Updating Stock List from TDX")
+    logger.info("Step 2: Updating Stock List from Sina")
     logger.info("=" * 60)
     
     stock_info = StockInfo()
-    stock_list = stock_info.get_stock_list_from_tdx(tdx_folder)
+    stock_list = stock_info.get_stock_list_from_sina()
     
     if stock_list is None or stock_list.empty:
-        logger.err("Failed to retrieve stock list from TDX")
+        logger.err("Failed to retrieve stock list from Sina")
         return False
     
-    logger.info(f"Found {len(stock_list)} stocks in TDX")
+    logger.info(f"Found {len(stock_list)} stocks from Sina")
     
     updated_count = 0
     for index, row in stock_list.iterrows():
@@ -240,8 +240,8 @@ def insert_pinyin(row):
     out['pinyin'] = com.get_py_from_name(row['name'])
     return pd.Series(out)
 
-def dump_stock_list(db, tdx_folder='./tdx'):
-    """Dump stock list from TDX to database."""
+def dump_stock_list(db):
+    """Dump stock list from online API to database."""
     logger.info("=" * 60)
     logger.info("Step 3: Updating Stock List Table")
     logger.info("=" * 60)
@@ -249,10 +249,10 @@ def dump_stock_list(db, tdx_folder='./tdx'):
     db.drop_table("stock_list")
     db_engine = db.create_engine()
     stock_info = StockInfo()
-    stock_list = stock_info.get_stock_list_from_tdx(tdx_folder)
+    stock_list = stock_info.get_stock_list_from_sina()
     
     if stock_list is None or stock_list.empty:
-        logger.err("Failed to retrieve stock list from TDX")
+        logger.err("Failed to retrieve stock list from Sina")
         return False
     
     stock_list[['pinyin']] = stock_list.apply(insert_pinyin, axis=1)
@@ -320,13 +320,13 @@ def main():
                 if not args.history_only:
                     logger.warn("Continuing with daily data update...")
         
-        # Update stock list from TDX
+        # Update stock list from online API
         if not args.skip_history and not args.daily_only:
-            update_stock_list(db, args.tdx_folder)
+            update_stock_list(db)
         
         # Fetch daily trading data
         if not args.skip_daily and not args.history_only:
-            dump_stock_list(db, args.tdx_folder)
+            dump_stock_list(db)
             dump_daily_data(db)
         
         logger.info("=" * 60)

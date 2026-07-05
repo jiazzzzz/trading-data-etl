@@ -37,7 +37,7 @@ echo OK
 echo.
 
 echo 4. Building server...
-go build -o stock-server.exe main.go
+go build -o stock-server.exe .
 if errorlevel 1 (
     echo ERROR: Build failed
     pause
@@ -51,7 +51,7 @@ echo All tests passed!
 echo ========================================
 echo.
 echo You can now start the server with:
-echo   go run main.go
+echo   go run .
 echo.
 echo Or run the compiled binary:
 echo   stock-server.exe

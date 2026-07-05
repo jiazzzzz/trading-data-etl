@@ -26,9 +26,9 @@ echo Setup complete!
 echo ========================================
 echo.
 echo You can now start the server with:
-echo   go run main.go
+echo   go run .
 echo.
 echo Or build a binary:
-echo   go build -o stock-server.exe main.go
+echo   go build -o stock-server.exe .
 echo.
 pause

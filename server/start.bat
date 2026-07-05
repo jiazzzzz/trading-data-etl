@@ -9,4 +9,4 @@ echo Server will be available at: http://localhost:8080
 echo Web UI available at: server/index.html
 echo.
 echo Starting server...
-go run main.go
+go run .
